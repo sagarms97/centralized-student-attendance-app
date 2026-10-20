@@ -13,6 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { StaffService } from '../../core/services/staff.service';
 import { Staff } from '../../core/models/academic.models';
 import { StaffDialogComponent } from './staff-dialog.component';
+import { InviteDialogComponent } from '../auth/invite-dialog.component';
 
 @Component({
   selector: 'app-staff-list',
@@ -37,9 +38,14 @@ import { StaffDialogComponent } from './staff-dialog.component';
           <h1>Staff Directory</h1>
           <p class="subtitle">Manage academic and teaching personnel</p>
         </div>
-        <button mat-flat-button color="primary" (click)="openAddDialog()">
-          <mat-icon>person_add</mat-icon> Add Staff Member
-        </button>
+        <div class="header-actions">
+          <button mat-stroked-button color="primary" (click)="openInviteDialog()">
+            <mat-icon>forward_to_inbox</mat-icon> Send Invite
+          </button>
+          <button mat-flat-button color="primary" (click)="openAddDialog()">
+            <mat-icon>person_add</mat-icon> Add Staff Member
+          </button>
+        </div>
       </div>
 
       <mat-card class="filter-card">
@@ -266,6 +272,13 @@ export class StaffListComponent implements OnInit {
           error: (err) => this.snackBar.open(err.error?.message || 'Failed to create staff', 'Close', { duration: 4000 })
         });
       }
+    });
+  }
+
+  openInviteDialog(): void {
+    this.dialog.open(InviteDialogComponent, {
+      width: '540px',
+      data: { role: 'Staff' }
     });
   }
 

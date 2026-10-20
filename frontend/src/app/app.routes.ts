@@ -19,6 +19,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/reset-password/reset-password.component').then(m => m.ResetPasswordComponent)
   },
   {
+    path: 'register-invite',
+    loadComponent: () => import('./features/auth/register-invite/register-invite.component').then(m => m.RegisterInviteComponent)
+  },
+  {
     path: 'app',
     component: LayoutComponent,
     canActivate: [authGuard],
@@ -48,6 +52,11 @@ export const routes: Routes = [
       {
         path: 'timetable',
         loadComponent: () => import('./features/timetable/timetable.component').then(m => m.TimetableComponent)
+      },
+      {
+        path: 'approvals',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./features/approvals/approvals-list.component').then(m => m.ApprovalsListComponent)
       },
       {
         path: 'attendance',

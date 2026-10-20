@@ -27,6 +27,9 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IExcelImportService, ExcelImportService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<INotificationChannel, EmailNotificationChannel>();
+builder.Services.AddScoped<INotificationChannel, WhatsAppNotificationChannel>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // CORS
 builder.Services.AddCors(options =>

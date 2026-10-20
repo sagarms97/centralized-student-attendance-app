@@ -15,6 +15,7 @@ import { ParentService } from '../../core/services/parent.service';
 import { ParentItem, CreateParentRequest, UpdateParentRequest } from '../../core/models/parent.models';
 import { ParentDialogComponent } from './parent-dialog.component';
 import { LinkStudentDialogComponent } from './link-student-dialog.component';
+import { InviteDialogComponent } from '../auth/invite-dialog.component';
 
 @Component({
   selector: 'app-parents-list',
@@ -41,6 +42,9 @@ import { LinkStudentDialogComponent } from './link-student-dialog.component';
           <p class="subtitle">Manage parent accounts and map them to enrolled students</p>
         </div>
         <div class="header-actions">
+          <button mat-stroked-button color="primary" (click)="openInviteDialog()">
+            <mat-icon>forward_to_inbox</mat-icon> Send Invite
+          </button>
           <button mat-flat-button color="primary" (click)="openAddDialog()">
             <mat-icon>person_add</mat-icon> Register Parent
           </button>
@@ -446,6 +450,13 @@ export class ParentsListComponent implements OnInit {
           }
         });
       }
+    });
+  }
+
+  openInviteDialog(): void {
+    this.dialog.open(InviteDialogComponent, {
+      width: '540px',
+      data: { role: 'Parent' }
     });
   }
 

@@ -19,6 +19,7 @@ public class AuthController : ControllerBase
     private readonly IPasswordService _passwordService;
     private readonly ICurrentTenantService _tenantService;
     private readonly IEmailService _emailService;
+    private readonly INotificationService _notificationService;
     private readonly IConfiguration _configuration;
 
     public AuthController(
@@ -27,6 +28,7 @@ public class AuthController : ControllerBase
         IPasswordService passwordService,
         ICurrentTenantService tenantService,
         IEmailService emailService,
+        INotificationService notificationService,
         IConfiguration configuration)
     {
         _context = context;
@@ -34,6 +36,7 @@ public class AuthController : ControllerBase
         _passwordService = passwordService;
         _tenantService = tenantService;
         _emailService = emailService;
+        _notificationService = notificationService;
         _configuration = configuration;
     }
 
@@ -403,5 +406,247 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Your password has been reset successfully. You may now log in with your new password." });
+    }
+
+    [HttpPost("register-invite")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RegisterWithInvite([FromBody] RegisterWithInviteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            return BadRequest(new { message = "Invitation token is required." });
+        }
+
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Token.Trim())));
+
+        var invite = await _context.UserInvites
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(ui => ui.TokenHash == tokenHash && ui.IsActive);
+
+        if (invite == null || invite.IsUsed || invite.ExpiresAt <= DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "This invitation link is invalid or has expired. Please request a new invite from your administrator." });
+        }
+
+        var institute = await _context.Institutes
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == invite.InstituteId);
+
+        if (institute == null)
+        {
+            return BadRequest(new { message = "Invalid institute." });
+        }
+
+        var email = invite.Email.ToLowerInvariant();
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.InstituteId == institute.Id && u.Email.ToLower() == email);
+
+        if (user == null)
+        {
+            user = new User
+            {
+                InstituteId = institute.Id,
+                Email = email,
+                FullName = string.IsNullOrWhiteSpace(request.FullName) ? invite.FullName : request.FullName.Trim(),
+                Role = invite.Role,
+                AccountStatus = AccountStatuses.PendingOtp,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            user.PasswordHash = _passwordService.HashPassword(user, request.Password);
+            _context.Users.Add(user);
+        }
+        else
+        {
+            user.FullName = string.IsNullOrWhiteSpace(request.FullName) ? user.FullName : request.FullName.Trim();
+            user.AccountStatus = AccountStatuses.PendingOtp;
+            user.PasswordHash = _passwordService.HashPassword(user, request.Password);
+        }
+
+        invite.IsUsed = true;
+        await _context.SaveChangesAsync();
+
+        // Generate 6-digit OTP
+        var otpCode = RandomNumberGenerator.GetInt32(100000, 999999).ToString("D6");
+        var otpHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(otpCode)));
+
+        // Invalidate prior registration OTPs for this email
+        var priorOtps = await _context.OtpVerifications
+            .IgnoreQueryFilters()
+            .Where(o => o.InstituteId == institute.Id && o.Email == email && o.Purpose == "RegistrationOtp" && !o.IsVerified)
+            .ToListAsync();
+        foreach (var po in priorOtps) po.IsActive = false;
+
+        var otpRecord = new OtpVerification
+        {
+            InstituteId = institute.Id,
+            UserId = user.Id,
+            Email = email,
+            Purpose = "RegistrationOtp",
+            OtpHash = otpHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Attempts = 0,
+            IsVerified = false,
+            LastResentAt = DateTime.UtcNow,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.OtpVerifications.Add(otpRecord);
+        await _context.SaveChangesAsync();
+
+        // Dispatch OTP
+        await _notificationService.SendOtpAsync(email, request.Phone ?? invite.Phone, user.FullName, otpCode);
+
+        return Ok(new
+        {
+            message = "Registration details submitted. A 6-digit verification code has been sent to your email.",
+            email = email,
+            instituteCode = institute.Code,
+            fullName = user.FullName
+        });
+    }
+
+    [HttpPost("verify-registration-otp")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyRegistrationOtp([FromBody] VerifyRegistrationOtpRequest request)
+    {
+        var code = request.InstituteCode.Trim().ToUpperInvariant();
+        var email = request.Email.Trim().ToLowerInvariant();
+
+        var institute = await _context.Institutes.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Code == code);
+        if (institute == null) return BadRequest(new { message = "Invalid institute code." });
+
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.InstituteId == institute.Id && u.Email.ToLower() == email);
+
+        if (user == null) return BadRequest(new { message = "User not found." });
+
+        var otpRecord = await _context.OtpVerifications
+            .IgnoreQueryFilters()
+            .Where(o => o.InstituteId == institute.Id && o.Email == email && o.Purpose == "RegistrationOtp" && o.IsActive && !o.IsVerified)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (otpRecord == null || otpRecord.ExpiresAt <= DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "The verification code has expired. Please request a new code." });
+        }
+
+        if (otpRecord.Attempts >= 5)
+        {
+            return BadRequest(new { message = "Too many failed attempts. Please request a new verification code." });
+        }
+
+        otpRecord.Attempts++;
+
+        var inputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Otp.Trim())));
+        if (otpRecord.OtpHash != inputHash)
+        {
+            await _context.SaveChangesAsync();
+            var remaining = 5 - otpRecord.Attempts;
+            return BadRequest(new { message = $"Incorrect verification code. {remaining} attempt(s) remaining." });
+        }
+
+        otpRecord.IsVerified = true;
+        user.AccountStatus = AccountStatuses.PendingApproval;
+
+        // Create or update corresponding domain profile in inactive state
+        if (user.Role == Roles.Staff)
+        {
+            var staff = await _context.StaffMembers.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.UserId == user.Id);
+            if (staff == null)
+            {
+                _context.StaffMembers.Add(new Staff
+                {
+                    InstituteId = institute.Id,
+                    UserId = user.Id,
+                    FullName = user.FullName,
+                    Email = user.Email,
+                    EmployeeId = $"EMP-{user.Id:D3}",
+                    Phone = "",
+                    IsActive = false,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else if (user.Role == Roles.Parent)
+        {
+            var parent = await _context.Parents.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.UserId == user.Id);
+            if (parent == null)
+            {
+                _context.Parents.Add(new Parent
+                {
+                    InstituteId = institute.Id,
+                    UserId = user.Id,
+                    FullName = user.FullName,
+                    Email = user.Email,
+                    Phone = "",
+                    IsActive = false,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Registration successful! Your account is now pending administrator approval. You will receive an email once approved."
+        });
+    }
+
+    [HttpPost("resend-registration-otp")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResendRegistrationOtp([FromBody] ResendRegistrationOtpRequest request)
+    {
+        var code = request.InstituteCode.Trim().ToUpperInvariant();
+        var email = request.Email.Trim().ToLowerInvariant();
+
+        var institute = await _context.Institutes.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Code == code);
+        if (institute == null) return BadRequest(new { message = "Invalid institute." });
+
+        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.InstituteId == institute.Id && u.Email.ToLower() == email);
+        if (user == null) return BadRequest(new { message = "User not found." });
+
+        var latestOtp = await _context.OtpVerifications
+            .IgnoreQueryFilters()
+            .Where(o => o.InstituteId == institute.Id && o.Email == email && o.Purpose == "RegistrationOtp" && o.IsActive)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        // 60-second cooldown
+        if (latestOtp != null && DateTime.UtcNow < latestOtp.LastResentAt.AddSeconds(60))
+        {
+            var waitSec = (int)(latestOtp.LastResentAt.AddSeconds(60) - DateTime.UtcNow).TotalSeconds;
+            return BadRequest(new { message = $"Please wait {waitSec} second(s) before requesting a new code." });
+        }
+
+        if (latestOtp != null) latestOtp.IsActive = false;
+
+        var otpCode = RandomNumberGenerator.GetInt32(100000, 999999).ToString("D6");
+        var otpHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(otpCode)));
+
+        var newOtp = new OtpVerification
+        {
+            InstituteId = institute.Id,
+            UserId = user.Id,
+            Email = email,
+            Purpose = "RegistrationOtp",
+            OtpHash = otpHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Attempts = 0,
+            IsVerified = false,
+            LastResentAt = DateTime.UtcNow,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.OtpVerifications.Add(newOtp);
+        await _context.SaveChangesAsync();
+
+        await _notificationService.SendOtpAsync(email, "", user.FullName, otpCode);
+
+        return Ok(new { message = "A new verification code has been dispatched to your email." });
     }
 }

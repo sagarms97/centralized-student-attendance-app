@@ -187,3 +187,30 @@ public class LeaveRequest : BaseTenantEntity
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewRemarks { get; set; }
 }
+
+public class UserInvite : BaseTenantEntity
+{
+    public string Email { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Role { get; set; } = Roles.Staff; // Staff or Parent
+    public string TokenHash { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+    public bool IsUsed { get; set; } = false;
+    public string? MetadataJson { get; set; } // JSON with EmployeeId, Specialization, or linked StudentIds
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+}
+
+public class OtpVerification : BaseTenantEntity
+{
+    public int? UserId { get; set; }
+    public User? User { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string Purpose { get; set; } = "RegistrationOtp";
+    public string OtpHash { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+    public int Attempts { get; set; } = 0;
+    public bool IsVerified { get; set; } = false;
+    public DateTime LastResentAt { get; set; } = DateTime.UtcNow;
+}

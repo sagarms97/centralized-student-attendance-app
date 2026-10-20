@@ -1,4 +1,4 @@
-import { Component, inject, ViewChild } from '@angular/core';
+import { Component, inject, ViewChild, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
@@ -14,6 +14,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AuthService } from '../../core/services/auth.service';
+import { ApprovalService } from '../../core/services/approval.service';
 import { ProfileDialogComponent } from '../profile/profile-dialog.component';
 
 @Component({
@@ -124,6 +125,13 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
               <a mat-list-item routerLink="/app/timetable" routerLinkActive="active-link" (click)="closeIfHandset()">
                 <mat-icon matListItemIcon>calendar_month</mat-icon>
                 <span matListItemTitle>Timetable Setup</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/approvals" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon [matBadge]="pendingApprovalsCount()" [matBadgeHidden]="pendingApprovalsCount() === 0" matBadgeColor="warn" matBadgeSize="small">
+                  how_to_reg
+                </mat-icon>
+                <span matListItemTitle>Approvals</span>
               </a>
             }
 
@@ -423,12 +431,15 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
     }
   `]
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
   authService = inject(AuthService);
+  private approvalService = inject(ApprovalService);
   private breakpointObserver = inject(BreakpointObserver);
   private dialog = inject(MatDialog);
 
   @ViewChild('snav') snav?: MatSidenav;
+
+  pendingApprovalsCount = signal<number>(0);
 
   isHandset = toSignal(
     this.breakpointObserver
@@ -436,6 +447,14 @@ export class LayoutComponent {
       .pipe(map(result => result.matches)),
     { initialValue: false }
   );
+
+  ngOnInit(): void {
+    if (this.authService.isAdmin()) {
+      this.approvalService.getPendingCount().subscribe({
+        next: count => this.pendingApprovalsCount.set(count)
+      });
+    }
+  }
 
   get userInitials(): string {
     const name = this.authService.currentUser()?.fullName || 'User';

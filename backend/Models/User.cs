@@ -28,6 +28,7 @@ public class User : ISoftDeletable, IAuditable
     public string FullName { get; set; } = string.Empty;
     public string Role { get; set; } = Roles.Staff;
     public string AccountStatus { get; set; } = AccountStatuses.Active;
+    public string? RejectionReason { get; set; }
     public string? PhotoPath { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

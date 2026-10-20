@@ -31,6 +31,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<ClassSubject> ClassSubjects => Set<ClassSubject>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<UserInvite> UserInvites => Set<UserInvite>();
+    public DbSet<OtpVerification> OtpVerifications => Set<OtpVerification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -50,6 +52,8 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<LeaveRequest>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<ClassSubject>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<PasswordResetToken>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId));
+        modelBuilder.Entity<UserInvite>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<OtpVerification>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
 
         modelBuilder.Entity<Institute>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<User>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null) && e.IsActive);
@@ -297,6 +301,36 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(rt => rt.User)
                   .WithMany(u => u.PasswordResetTokens)
                   .HasForeignKey(rt => rt.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // UserInvite
+        modelBuilder.Entity<UserInvite>(entity =>
+        {
+            entity.HasIndex(ui => ui.TokenHash);
+            entity.HasIndex(ui => new { ui.InstituteId, ui.Email });
+            entity.Property(ui => ui.Email).HasMaxLength(150).IsRequired();
+            entity.Property(ui => ui.FullName).HasMaxLength(150).IsRequired();
+            entity.Property(ui => ui.TokenHash).HasMaxLength(256).IsRequired();
+            entity.Property(ui => ui.Role).HasMaxLength(50).IsRequired();
+
+            entity.HasOne(ui => ui.CreatedByUser)
+                  .WithMany()
+                  .HasForeignKey(ui => ui.CreatedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // OtpVerification
+        modelBuilder.Entity<OtpVerification>(entity =>
+        {
+            entity.HasIndex(o => new { o.InstituteId, o.Email, o.Purpose });
+            entity.Property(o => o.Email).HasMaxLength(150).IsRequired();
+            entity.Property(o => o.OtpHash).HasMaxLength(256).IsRequired();
+            entity.Property(o => o.Purpose).HasMaxLength(50).IsRequired();
+
+            entity.HasOne(o => o.User)
+                  .WithMany()
+                  .HasForeignKey(o => o.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
