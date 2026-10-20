@@ -1,0 +1,107 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$student-attendance-primary: mat.m2-define-palette(mat.$m2-indigo-palette, 700);
+$student-attendance-accent: mat.m2-define-palette(mat.$m2-teal-palette, A200, A100, A400);
+$student-attendance-warn: mat.m2-define-palette(mat.$m2-red-palette);
+
+$student-attendance-theme: mat.m2-define-light-theme((
+  color: (
+    primary: $student-attendance-primary,
+    accent: $student-attendance-accent,
+    warn: $student-attendance-warn,
+  ),
+  typography: mat.m2-define-typography-config(),
+  density: 0
+));
+
+@include mat.all-component-themes($student-attendance-theme);
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+  background-color: #f4f6f9;
+  color: #2c3e50;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.page-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+
+  h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 500;
+    color: #1a237e;
+  }
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &.badge-admin {
+    background-color: #e8eaf6;
+    color: #1a237e;
+  }
+
+  &.badge-staff {
+    background-color: #e0f2f1;
+    color: #004d40;
+  }
+
+  &.badge-present {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  &.badge-absent {
+    background-color: #ffebee;
+    color: #c62828;
+  }
+
+  &.badge-late {
+    background-color: #fff8e1;
+    color: #f57f17;
+  }
+
+  &.badge-pending {
+    background-color: #fff3e0;
+    color: #e65100;
+  }
+
+  &.badge-approved {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  &.badge-rejected {
+    background-color: #ffebee;
+    color: #c62828;
+  }
+}
