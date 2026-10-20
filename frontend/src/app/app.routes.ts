@@ -69,6 +69,14 @@ export const routes: Routes = [
       {
         path: 'reports',
         loadComponent: () => import('./features/reports/reports.component').then(m => m.ReportsComponent)
+      },
+      {
+        path: 'parent-portal',
+        loadComponent: () => import('./features/parents/parent-portal.component').then(m => m.ParentPortalComponent)
+      },
+      {
+        path: 'leaves',
+        loadComponent: () => import('./features/parents/leave-approvals.component').then(m => m.LeaveApprovalsComponent)
       }
     ]
   },

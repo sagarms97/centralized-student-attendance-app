@@ -15,6 +15,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AuthService } from '../../core/services/auth.service';
 import { ApprovalService } from '../../core/services/approval.service';
+import { LeaveService } from '../../core/services/leave.service';
 import { ProfileDialogComponent } from '../profile/profile-dialog.component';
 
 @Component({
@@ -149,6 +150,13 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
                 <span matListItemTitle>Period Swaps</span>
               </a>
 
+              <a mat-list-item routerLink="/app/leaves" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon [matBadge]="pendingLeavesCount()" [matBadgeHidden]="pendingLeavesCount() === 0" matBadgeColor="warn" matBadgeSize="small">
+                  event_busy
+                </mat-icon>
+                <span matListItemTitle>Leave Requests</span>
+              </a>
+
               <a mat-list-item routerLink="/app/reports" routerLinkActive="active-link" (click)="closeIfHandset()">
                 <mat-icon matListItemIcon>assessment</mat-icon>
                 <span matListItemTitle>Reports & Analytics</span>
@@ -159,14 +167,16 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
             @if (authService.isParent()) {
               <div class="nav-section-label">MY FAMILY</div>
 
-              <a mat-list-item routerLink="/app/dashboard" routerLinkActive="active-link" (click)="closeIfHandset()">
-                <mat-icon matListItemIcon>child_care</mat-icon>
-                <span matListItemTitle>My Children</span>
+              <a mat-list-item routerLink="/app/parent-portal" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>family_restroom</mat-icon>
+                <span matListItemTitle>Parent Portal & Attendance</span>
               </a>
 
-              <a mat-list-item routerLink="/app/reports" routerLinkActive="active-link" (click)="closeIfHandset()">
-                <mat-icon matListItemIcon>event_available</mat-icon>
-                <span matListItemTitle>Attendance History</span>
+              <a mat-list-item routerLink="/app/leaves" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon [matBadge]="pendingLeavesCount()" [matBadgeHidden]="pendingLeavesCount() === 0" matBadgeColor="warn" matBadgeSize="small">
+                  event_note
+                </mat-icon>
+                <span matListItemTitle>Leave Requests</span>
               </a>
             }
           </mat-nav-list>
@@ -216,9 +226,14 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
               <span>Reports</span>
             </a>
           } @else if (authService.isParent()) {
-            <a routerLink="/app/reports" routerLinkActive="active-bottom" class="bottom-nav-item">
-              <mat-icon>event_available</mat-icon>
-              <span>History</span>
+            <a routerLink="/app/parent-portal" routerLinkActive="active-bottom" class="bottom-nav-item">
+              <mat-icon>family_restroom</mat-icon>
+              <span>Children</span>
+            </a>
+
+            <a routerLink="/app/leaves" routerLinkActive="active-bottom" class="bottom-nav-item">
+              <mat-icon>event_note</mat-icon>
+              <span>Leaves</span>
             </a>
           }
 
@@ -434,12 +449,14 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
 export class LayoutComponent implements OnInit {
   authService = inject(AuthService);
   private approvalService = inject(ApprovalService);
+  private leaveService = inject(LeaveService);
   private breakpointObserver = inject(BreakpointObserver);
   private dialog = inject(MatDialog);
 
   @ViewChild('snav') snav?: MatSidenav;
 
   pendingApprovalsCount = signal<number>(0);
+  pendingLeavesCount = signal<number>(0);
 
   isHandset = toSignal(
     this.breakpointObserver
@@ -454,6 +471,11 @@ export class LayoutComponent implements OnInit {
         next: count => this.pendingApprovalsCount.set(count)
       });
     }
+
+    this.leaveService.getPendingCount().subscribe({
+      next: count => this.pendingLeavesCount.set(count),
+      error: () => {}
+    });
   }
 
   get userInitials(): string {

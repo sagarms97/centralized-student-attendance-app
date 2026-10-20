@@ -1,6 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -226,6 +226,7 @@ interface DashboardStats {
 export class DashboardComponent implements OnInit {
   authService = inject(AuthService);
   private http = inject(HttpClient);
+  private router = inject(Router);
 
   stats = signal<DashboardStats>({
     todayAttendancePercent: 0,
@@ -237,6 +238,10 @@ export class DashboardComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (this.authService.isParent()) {
+      this.router.navigate(['/app/parent-portal']);
+      return;
+    }
     this.loadStats();
   }
 

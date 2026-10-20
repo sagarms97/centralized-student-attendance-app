@@ -189,6 +189,14 @@ public class AttendanceController : ControllerBase
             .Where(a => a.Date == targetDate && a.PeriodId == entry.PeriodId && a.TimetableEntryId == entry.Id)
             .ToDictionaryAsync(a => a.StudentId, a => a);
 
+        // Fetch approved leave requests overlapping targetDate for students in this class/section
+        var studentIds = students.Select(s => s.Id).ToList();
+        var approvedLeaves = await _context.LeaveRequests
+            .Where(l => studentIds.Contains(l.StudentId) &&
+                        l.StartDate <= targetDate && l.EndDate >= targetDate &&
+                        l.Status == LeaveStatus.Approved)
+            .ToDictionaryAsync(l => l.StudentId, l => l.Reason);
+
         var studentAttendanceList = students.Select(s =>
         {
             if (existingRecords.TryGetValue(s.Id, out var record))
@@ -203,7 +211,19 @@ public class AttendanceController : ControllerBase
                 };
             }
 
-            // Default all students to "Present"
+            if (approvedLeaves.TryGetValue(s.Id, out var leaveReason))
+            {
+                return new StudentAttendanceItemDto
+                {
+                    StudentId = s.Id,
+                    RollNo = s.RollNo,
+                    FullName = s.FullName,
+                    Status = AttendanceStatus.OnLeave,
+                    Remarks = $"Approved Leave: {leaveReason}"
+                };
+            }
+
+            // Default all other students to "Present"
             return new StudentAttendanceItemDto
             {
                 StudentId = s.Id,
@@ -281,6 +301,7 @@ public class AttendanceController : ControllerBase
             {
                 "Absent" => AttendanceStatus.Absent,
                 "Late" => AttendanceStatus.Late,
+                "OnLeave" => AttendanceStatus.OnLeave,
                 _ => AttendanceStatus.Present
             };
 
