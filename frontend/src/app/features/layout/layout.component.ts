@@ -12,7 +12,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AuthService } from '../../core/services/auth.service';
+import { ProfileDialogComponent } from '../profile/profile-dialog.component';
 
 @Component({
   selector: 'app-layout',
@@ -27,7 +29,8 @@ import { AuthService } from '../../core/services/auth.service';
     MatButtonModule,
     MatMenuModule,
     MatDividerModule,
-    MatBadgeModule
+    MatBadgeModule,
+    MatDialogModule
   ],
   template: `
     <div class="layout-container" [class.mobile-layout]="isHandset()">
@@ -65,6 +68,11 @@ import { AuthService } from '../../core/services/auth.service';
             <small>{{ authService.currentUser()?.email }}</small>
             <span class="role-pill mt-1">{{ authService.currentUser()?.role }}</span>
           </div>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="openProfileDialog()">
+            <mat-icon color="primary">account_circle</mat-icon>
+            <span>My Profile & Security</span>
+          </button>
           <mat-divider></mat-divider>
           <button mat-menu-item (click)="logout()">
             <mat-icon color="warn">logout</mat-icon>
@@ -106,6 +114,11 @@ import { AuthService } from '../../core/services/auth.service';
               <a mat-list-item routerLink="/app/parents" routerLinkActive="active-link" (click)="closeIfHandset()">
                 <mat-icon matListItemIcon>family_restroom</mat-icon>
                 <span matListItemTitle>Parent Directory</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/subjects" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>menu_book</mat-icon>
+                <span matListItemTitle>Subjects Setup</span>
               </a>
 
               <a mat-list-item routerLink="/app/timetable" routerLinkActive="active-link" (click)="closeIfHandset()">
@@ -413,6 +426,7 @@ import { AuthService } from '../../core/services/auth.service';
 export class LayoutComponent {
   authService = inject(AuthService);
   private breakpointObserver = inject(BreakpointObserver);
+  private dialog = inject(MatDialog);
 
   @ViewChild('snav') snav?: MatSidenav;
 
@@ -426,6 +440,10 @@ export class LayoutComponent {
   get userInitials(): string {
     const name = this.authService.currentUser()?.fullName || 'User';
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  }
+
+  openProfileDialog(): void {
+    this.dialog.open(ProfileDialogComponent, { width: '560px' });
   }
 
   closeIfHandset(): void {

@@ -6,9 +6,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { AcademicService } from '../../core/services/academic.service';
+import { SubjectService } from '../../core/services/subject.service';
 import { StaffService } from '../../core/services/staff.service';
-import { SubjectItem, Staff } from '../../core/models/academic.models';
+import { ClassSubjectDto, Staff } from '../../core/models/academic.models';
 
 export interface TimetableDialogData {
   classId: number;
@@ -48,9 +48,14 @@ export interface TimetableDialogData {
       <form [formGroup]="form" class="dialog-form">
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Subject</mat-label>
-          <mat-select formControlName="subjectId">
-            @for (s of subjects(); track s.id) {
-              <mat-option [value]="s.id">{{ s.name }} ({{ s.code }})</mat-option>
+          <mat-select formControlName="subjectId" (selectionChange)="onSubjectSelected($event.value)">
+            @for (s of classSubjects(); track s.subjectId) {
+              <mat-option [value]="s.subjectId">
+                {{ s.subjectName }} ({{ s.subjectCode }})
+                @if (s.defaultStaffName) {
+                  - [Default: {{ s.defaultStaffName }}]
+                }
+              </mat-option>
             }
           </mat-select>
           @if (form.get('subjectId')?.hasError('required')) {
@@ -94,9 +99,11 @@ export interface TimetableDialogData {
       gap: 20px;
       font-size: 0.9rem;
       color: #1e293b;
+      flex-wrap: wrap;
     }
     .dialog-form {
-      min-width: 440px;
+      min-width: 320px;
+      max-width: 480px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -107,12 +114,12 @@ export interface TimetableDialogData {
 })
 export class TimetableDialogComponent implements OnInit {
   private fb = inject(FormBuilder);
-  private academicService = inject(AcademicService);
+  private subjectService = inject(SubjectService);
   private staffService = inject(StaffService);
   dialogRef = inject(MatDialogRef<TimetableDialogComponent>);
   data: TimetableDialogData = inject(MAT_DIALOG_DATA);
 
-  subjects = signal<SubjectItem[]>([]);
+  classSubjects = signal<ClassSubjectDto[]>([]);
   staffList = signal<Staff[]>([]);
 
   form = this.fb.group({
@@ -121,8 +128,19 @@ export class TimetableDialogComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.academicService.getSubjects().subscribe(res => this.subjects.set(res));
-    this.staffService.getAll(false).subscribe(res => this.staffList.set(res.filter(s => s.isActive)));
+    this.subjectService.getByClass(this.data.classId).subscribe(res => {
+      this.classSubjects.set(res);
+    });
+    this.staffService.getAll(false).subscribe(res => {
+      this.staffList.set(res.filter(s => s.isActive));
+    });
+  }
+
+  onSubjectSelected(subjectId: number): void {
+    const cs = this.classSubjects().find(s => s.subjectId === subjectId);
+    if (cs && cs.defaultStaffId && !this.form.get('staffId')?.value) {
+      this.form.patchValue({ staffId: cs.defaultStaffId });
+    }
   }
 
   save(): void {

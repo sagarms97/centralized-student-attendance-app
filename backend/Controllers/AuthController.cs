@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,17 +18,23 @@ public class AuthController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly IPasswordService _passwordService;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IEmailService _emailService;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         ApplicationDbContext context,
         ITokenService tokenService,
         IPasswordService passwordService,
-        ICurrentTenantService tenantService)
+        ICurrentTenantService tenantService,
+        IEmailService emailService,
+        IConfiguration configuration)
     {
         _context = context;
         _tokenService = tokenService;
         _passwordService = passwordService;
         _tenantService = tenantService;
+        _emailService = emailService;
+        _configuration = configuration;
     }
 
     [HttpPost("register-institute")]
@@ -305,5 +313,95 @@ public class AuthController : ControllerBase
                 LogoPath = user.Institute.LogoPath
             } : null
         });
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        // Safe generic response to avoid exposing email presence
+        const string safeMessage = "If an account matching those details exists, a password reset link has been dispatched to your email.";
+
+        var code = request.InstituteCode.Trim().ToUpperInvariant();
+        var email = request.Email.Trim().ToLowerInvariant();
+
+        var institute = await _context.Institutes.FirstOrDefaultAsync(i => i.Code == code);
+        if (institute == null)
+        {
+            return Ok(new { message = safeMessage });
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.InstituteId == institute.Id && u.Email.ToLower() == email && u.IsActive);
+
+        if (user == null)
+        {
+            return Ok(new { message = safeMessage });
+        }
+
+        // Invalidate prior unused tokens
+        var existingTokens = await _context.PasswordResetTokens
+            .Where(t => t.UserId == user.Id && !t.IsUsed)
+            .ToListAsync();
+        foreach (var t in existingTokens) t.IsUsed = true;
+
+        // Generate cryptographically random token
+        var rawToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
+
+        var resetToken = new PasswordResetToken
+        {
+            InstituteId = institute.Id,
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.PasswordResetTokens.Add(resetToken);
+        await _context.SaveChangesAsync();
+
+        var frontendUrl = _configuration["FrontendUrl"] ?? "http://localhost:4200";
+        var resetLink = $"{frontendUrl}/reset-password?token={rawToken}";
+
+        await _emailService.SendPasswordResetEmailAsync(user.Email, resetLink, user.FullName);
+
+        return Ok(new { message = safeMessage });
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            return BadRequest(new { message = "Reset token is required." });
+        }
+
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Token.Trim())));
+
+        var resetToken = await _context.PasswordResetTokens
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+        if (resetToken == null || resetToken.IsUsed || resetToken.IsExpired)
+        {
+            return BadRequest(new { message = "The password reset link is invalid or has expired. Please request a new one." });
+        }
+
+        resetToken.IsUsed = true;
+
+        resetToken.User.PasswordHash = _passwordService.HashPassword(resetToken.User, request.NewPassword);
+
+        // Revoke active refresh tokens for security
+        var activeRefreshTokens = await _context.RefreshTokens
+            .Where(r => r.UserId == resetToken.UserId && !r.IsRevoked)
+            .ToListAsync();
+        foreach (var r in activeRefreshTokens) r.IsRevoked = true;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Your password has been reset successfully. You may now log in with your new password." });
     }
 }

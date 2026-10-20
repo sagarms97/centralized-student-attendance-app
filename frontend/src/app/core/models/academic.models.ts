@@ -37,11 +37,32 @@ export interface ClassItem {
   isActive: boolean;
 }
 
+export interface ClassSubjectAssignment {
+  classSubjectId: number;
+  classId: number;
+  className: string;
+  defaultStaffId?: number;
+  defaultStaffName?: string;
+}
+
 export interface SubjectItem {
   id: number;
   name: string;
   code: string;
   isActive: boolean;
+  assignedClassCount?: number;
+  assignedClasses?: ClassSubjectAssignment[];
+}
+
+export interface ClassSubjectDto {
+  id: number;
+  classId: number;
+  className: string;
+  subjectId: number;
+  subjectName: string;
+  subjectCode: string;
+  defaultStaffId?: number;
+  defaultStaffName?: string;
 }
 
 export interface ExcelImportRowPreview {

@@ -5,6 +5,10 @@ public interface IFileStorageService
     Task<string> SaveStaffPhotoAsync(int instituteId, IFormFile file);
     (Stream Stream, string ContentType)? GetStaffPhoto(int instituteId, string fileName);
     void DeleteStaffPhoto(int instituteId, string? fileName);
+
+    Task<string> SaveProfilePhotoAsync(int instituteId, IFormFile file);
+    (Stream Stream, string ContentType)? GetProfilePhoto(int instituteId, string fileName);
+    void DeleteProfilePhoto(int instituteId, string? fileName);
 }
 
 public class FileStorageService : IFileStorageService
@@ -18,7 +22,25 @@ public class FileStorageService : IFileStorageService
         _baseStoragePath = Path.Combine(environment.ContentRootPath, "App_Data", "Storage");
     }
 
-    public async Task<string> SaveStaffPhotoAsync(int instituteId, IFormFile file)
+    public Task<string> SaveStaffPhotoAsync(int instituteId, IFormFile file) =>
+        SavePhotoInternalAsync(instituteId, "Staff", file);
+
+    public (Stream Stream, string ContentType)? GetStaffPhoto(int instituteId, string fileName) =>
+        GetPhotoInternal(instituteId, "Staff", fileName);
+
+    public void DeleteStaffPhoto(int instituteId, string? fileName) =>
+        DeletePhotoInternal(instituteId, "Staff", fileName);
+
+    public Task<string> SaveProfilePhotoAsync(int instituteId, IFormFile file) =>
+        SavePhotoInternalAsync(instituteId, "Profiles", file);
+
+    public (Stream Stream, string ContentType)? GetProfilePhoto(int instituteId, string fileName) =>
+        GetPhotoInternal(instituteId, "Profiles", fileName);
+
+    public void DeleteProfilePhoto(int instituteId, string? fileName) =>
+        DeletePhotoInternal(instituteId, "Profiles", fileName);
+
+    private async Task<string> SavePhotoInternalAsync(int instituteId, string folder, IFormFile file)
     {
         if (file == null || file.Length == 0)
         {
@@ -36,11 +58,11 @@ public class FileStorageService : IFileStorageService
             throw new InvalidOperationException("Invalid file type. Only JPG, PNG, and WebP images are permitted.");
         }
 
-        var instituteStaffDir = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), "Staff");
-        Directory.CreateDirectory(instituteStaffDir);
+        var dir = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), folder);
+        Directory.CreateDirectory(dir);
 
         var uniqueFileName = $"{Guid.NewGuid():N}{ext}";
-        var filePath = Path.Combine(instituteStaffDir, uniqueFileName);
+        var filePath = Path.Combine(dir, uniqueFileName);
 
         using (var stream = new FileStream(filePath, FileMode.Create))
         {
@@ -50,12 +72,12 @@ public class FileStorageService : IFileStorageService
         return uniqueFileName;
     }
 
-    public (Stream Stream, string ContentType)? GetStaffPhoto(int instituteId, string fileName)
+    private (Stream Stream, string ContentType)? GetPhotoInternal(int instituteId, string folder, string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;
 
         var cleanFileName = Path.GetFileName(fileName);
-        var filePath = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), "Staff", cleanFileName);
+        var filePath = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), folder, cleanFileName);
 
         if (!File.Exists(filePath))
         {
@@ -75,11 +97,11 @@ public class FileStorageService : IFileStorageService
         return (stream, contentType);
     }
 
-    public void DeleteStaffPhoto(int instituteId, string? fileName)
+    private void DeletePhotoInternal(int instituteId, string folder, string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return;
         var cleanFileName = Path.GetFileName(fileName);
-        var filePath = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), "Staff", cleanFileName);
+        var filePath = Path.Combine(_baseStoragePath, "Institutes", instituteId.ToString(), folder, cleanFileName);
         if (File.Exists(filePath))
         {
             try { File.Delete(filePath); } catch { }

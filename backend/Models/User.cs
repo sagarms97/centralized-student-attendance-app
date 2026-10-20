@@ -35,6 +35,22 @@ public class User : ISoftDeletable, IAuditable
     public Staff? StaffProfile { get; set; }
     public Parent? ParentProfile { get; set; }
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    public ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
+}
+
+public class PasswordResetToken : IAuditable
+{
+    public int Id { get; set; }
+    public int? InstituteId { get; set; }
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public string TokenHash { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+    public bool IsUsed { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
+    public bool IsActive => !IsUsed && !IsExpired;
 }
 
 public class RefreshToken : IAuditable

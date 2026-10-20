@@ -74,6 +74,10 @@ import { AuthService } from '../../../core/services/auth.service';
               }
             </mat-form-field>
 
+            <div class="forgot-row">
+              <a routerLink="/forgot-password" class="forgot-link">Forgot password?</a>
+            </div>
+
             <button mat-raised-button color="primary" class="full-width submit-btn" type="submit" [disabled]="loginForm.invalid || isLoading()">
               @if (isLoading()) {
                 <mat-spinner diameter="20" class="spinner-inline"></mat-spinner>
@@ -143,6 +147,21 @@ import { AuthService } from '../../../core/services/auth.service';
     .full-width {
       width: 100%;
       margin-bottom: 16px;
+    }
+    .forgot-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: -6px;
+      margin-bottom: 16px;
+      .forgot-link {
+        color: #1a237e;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-decoration: none;
+        &:hover {
+          text-decoration: underline;
+        }
+      }
     }
     .submit-btn {
       height: 48px;

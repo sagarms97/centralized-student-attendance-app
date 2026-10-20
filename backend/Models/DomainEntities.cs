@@ -14,6 +14,7 @@ public class Staff : BaseTenantEntity
     public ICollection<TimetableEntry> TimetableEntries { get; set; } = new List<TimetableEntry>();
     public ICollection<PeriodSwapRequest> RequestedSwaps { get; set; } = new List<PeriodSwapRequest>();
     public ICollection<PeriodSwapRequest> ReceivedSwaps { get; set; } = new List<PeriodSwapRequest>();
+    public ICollection<ClassSubject> DefaultAssignedClassSubjects { get; set; } = new List<ClassSubject>();
 }
 
 public class ClassEntity : BaseTenantEntity
@@ -23,6 +24,7 @@ public class ClassEntity : BaseTenantEntity
 
     public ICollection<Student> Students { get; set; } = new List<Student>();
     public ICollection<TimetableEntry> TimetableEntries { get; set; } = new List<TimetableEntry>();
+    public ICollection<ClassSubject> ClassSubjects { get; set; } = new List<ClassSubject>();
 }
 
 public class Subject : BaseTenantEntity
@@ -31,6 +33,17 @@ public class Subject : BaseTenantEntity
     public string Code { get; set; } = string.Empty;
 
     public ICollection<TimetableEntry> TimetableEntries { get; set; } = new List<TimetableEntry>();
+    public ICollection<ClassSubject> ClassSubjects { get; set; } = new List<ClassSubject>();
+}
+
+public class ClassSubject : BaseTenantEntity
+{
+    public int ClassId { get; set; }
+    public ClassEntity Class { get; set; } = null!;
+    public int SubjectId { get; set; }
+    public Subject Subject { get; set; } = null!;
+    public int? DefaultStaffId { get; set; }
+    public Staff? DefaultStaff { get; set; }
 }
 
 public class Period : BaseTenantEntity

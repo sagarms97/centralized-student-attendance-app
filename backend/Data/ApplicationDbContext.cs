@@ -29,6 +29,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Parent> Parents => Set<Parent>();
     public DbSet<ParentStudent> ParentStudents => Set<ParentStudent>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<ClassSubject> ClassSubjects => Set<ClassSubject>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +48,8 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Parent>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<ParentStudent>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<LeaveRequest>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<ClassSubject>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<PasswordResetToken>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId));
 
         modelBuilder.Entity<Institute>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<User>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null) && e.IsActive);
@@ -261,6 +265,39 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(lr => lr.ReviewedByUserId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ClassSubject
+        modelBuilder.Entity<ClassSubject>(entity =>
+        {
+            entity.HasIndex(cs => new { cs.InstituteId, cs.ClassId, cs.SubjectId }).IsUnique();
+
+            entity.HasOne(cs => cs.Class)
+                  .WithMany(c => c.ClassSubjects)
+                  .HasForeignKey(cs => cs.ClassId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(cs => cs.Subject)
+                  .WithMany(s => s.ClassSubjects)
+                  .HasForeignKey(cs => cs.SubjectId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(cs => cs.DefaultStaff)
+                  .WithMany(st => st.DefaultAssignedClassSubjects)
+                  .HasForeignKey(cs => cs.DefaultStaffId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // PasswordResetToken
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasIndex(rt => rt.TokenHash);
+            entity.Property(rt => rt.TokenHash).HasMaxLength(256).IsRequired();
+
+            entity.HasOne(rt => rt.User)
+                  .WithMany(u => u.PasswordResetTokens)
+                  .HasForeignKey(rt => rt.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

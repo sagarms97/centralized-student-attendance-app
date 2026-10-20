@@ -121,6 +121,46 @@ namespace StudentAttendance.Api.Migrations
                     b.ToTable("Classes");
                 });
 
+            modelBuilder.Entity("StudentAttendance.Api.Models.ClassSubject", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClassId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DefaultStaffId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SubjectId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassId");
+
+                    b.HasIndex("DefaultStaffId");
+
+                    b.HasIndex("SubjectId");
+
+                    b.HasIndex("InstituteId", "ClassId", "SubjectId")
+                        .IsUnique();
+
+                    b.ToTable("ClassSubjects");
+                });
+
             modelBuilder.Entity("StudentAttendance.Api.Models.Institute", b =>
                 {
                     b.Property<int>("Id")
@@ -326,6 +366,43 @@ namespace StudentAttendance.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ParentStudents");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.PasswordResetToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PasswordResetTokens");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Period", b =>
@@ -766,6 +843,32 @@ namespace StudentAttendance.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("StudentAttendance.Api.Models.ClassSubject", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.ClassEntity", "Class")
+                        .WithMany("ClassSubjects")
+                        .HasForeignKey("ClassId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.Staff", "DefaultStaff")
+                        .WithMany("DefaultAssignedClassSubjects")
+                        .HasForeignKey("DefaultStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("StudentAttendance.Api.Models.Subject", "Subject")
+                        .WithMany("ClassSubjects")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Class");
+
+                    b.Navigation("DefaultStaff");
+
+                    b.Navigation("Subject");
+                });
+
             modelBuilder.Entity("StudentAttendance.Api.Models.LeaveRequest", b =>
                 {
                     b.HasOne("StudentAttendance.Api.Models.Parent", "Parent")
@@ -826,6 +929,17 @@ namespace StudentAttendance.Api.Migrations
                     b.Navigation("Parent");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.User", "User")
+                        .WithMany("PasswordResetTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Period", b =>
@@ -984,6 +1098,8 @@ namespace StudentAttendance.Api.Migrations
 
             modelBuilder.Entity("StudentAttendance.Api.Models.ClassEntity", b =>
                 {
+                    b.Navigation("ClassSubjects");
+
                     b.Navigation("Students");
 
                     b.Navigation("TimetableEntries");
@@ -1028,6 +1144,8 @@ namespace StudentAttendance.Api.Migrations
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Staff", b =>
                 {
+                    b.Navigation("DefaultAssignedClassSubjects");
+
                     b.Navigation("ReceivedSwaps");
 
                     b.Navigation("RequestedSwaps");
@@ -1046,6 +1164,8 @@ namespace StudentAttendance.Api.Migrations
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Subject", b =>
                 {
+                    b.Navigation("ClassSubjects");
+
                     b.Navigation("TimetableEntries");
                 });
 
@@ -1059,6 +1179,8 @@ namespace StudentAttendance.Api.Migrations
             modelBuilder.Entity("StudentAttendance.Api.Models.User", b =>
                 {
                     b.Navigation("ParentProfile");
+
+                    b.Navigation("PasswordResetTokens");
 
                     b.Navigation("RefreshTokens");
 

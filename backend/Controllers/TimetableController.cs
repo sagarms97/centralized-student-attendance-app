@@ -140,6 +140,17 @@ public class TimetableController : ControllerBase
             });
         }
 
+        // 3. Verify subject is assigned to this class
+        var hasClassSubjects = await _context.ClassSubjects.AnyAsync(cs => cs.ClassId == request.ClassId);
+        if (hasClassSubjects)
+        {
+            var isSubjectAssigned = await _context.ClassSubjects.AnyAsync(cs => cs.ClassId == request.ClassId && cs.SubjectId == request.SubjectId);
+            if (!isSubjectAssigned)
+            {
+                return BadRequest(new { message = "The selected subject is not assigned to this class. Please assign the subject to the class in the Subjects tab first." });
+            }
+        }
+
         var entry = new TimetableEntry
         {
             InstituteId = tenantId.Value,
