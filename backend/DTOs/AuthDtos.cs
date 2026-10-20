@@ -68,7 +68,10 @@ public class UserDto
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
+    public string AccountStatus { get; set; } = "Active";
+    public string? PhotoPath { get; set; }
     public int? StaffId { get; set; }
+    public int? ParentId { get; set; }
 }
 
 public class InstituteDto

@@ -123,6 +123,7 @@ public class AuthController : ControllerBase
             user = await _context.Users
                 .Include(u => u.Institute)
                 .Include(u => u.StaffProfile)
+                .Include(u => u.ParentProfile)
                 .FirstOrDefaultAsync(u => u.InstituteId == institute.Id && u.Email == email);
         }
         else
@@ -130,6 +131,7 @@ public class AuthController : ControllerBase
             user = await _context.Users
                 .Include(u => u.Institute)
                 .Include(u => u.StaffProfile)
+                .Include(u => u.ParentProfile)
                 .FirstOrDefaultAsync(u => u.Email == email);
         }
 
@@ -138,9 +140,24 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
-        if (!user.IsActive)
+        if (!user.IsActive || user.AccountStatus == AccountStatuses.Disabled)
         {
             return Unauthorized(new { message = "Your account has been deactivated. Please contact your administrator." });
+        }
+
+        if (user.AccountStatus == AccountStatuses.PendingApproval)
+        {
+            return Unauthorized(new { message = "Registration successful. Please wait for admin approval." });
+        }
+
+        if (user.AccountStatus == AccountStatuses.PendingOtp)
+        {
+            return Unauthorized(new { message = "Please verify your 6-digit OTP before logging in." });
+        }
+
+        if (user.AccountStatus == AccountStatuses.Rejected)
+        {
+            return Unauthorized(new { message = "Your registration request has been rejected by the administrator." });
         }
 
         var (accessToken, expiresAt) = _tokenService.GenerateAccessToken(user, user.Institute?.Code);
@@ -161,7 +178,10 @@ public class AuthController : ControllerBase
                 FullName = user.FullName,
                 Email = user.Email,
                 Role = user.Role,
-                StaffId = user.StaffProfile?.Id
+                AccountStatus = user.AccountStatus,
+                PhotoPath = user.PhotoPath ?? user.StaffProfile?.PhotoPath ?? user.ParentProfile?.PhotoPath,
+                StaffId = user.StaffProfile?.Id,
+                ParentId = user.ParentProfile?.Id
             },
             Institute = user.Institute != null ? new InstituteDto
             {
@@ -186,6 +206,8 @@ public class AuthController : ControllerBase
             .ThenInclude(u => u.Institute)
             .Include(r => r.User)
             .ThenInclude(u => u.StaffProfile)
+            .Include(r => r.User)
+            .ThenInclude(u => u.ParentProfile)
             .FirstOrDefaultAsync(r => r.Token == request.RefreshToken);
 
         if (existingToken == null || !existingToken.IsActive)
@@ -215,7 +237,10 @@ public class AuthController : ControllerBase
                 FullName = user.FullName,
                 Email = user.Email,
                 Role = user.Role,
-                StaffId = user.StaffProfile?.Id
+                AccountStatus = user.AccountStatus,
+                PhotoPath = user.PhotoPath ?? user.StaffProfile?.PhotoPath ?? user.ParentProfile?.PhotoPath,
+                StaffId = user.StaffProfile?.Id,
+                ParentId = user.ParentProfile?.Id
             },
             Institute = user.Institute != null ? new InstituteDto
             {
@@ -245,6 +270,7 @@ public class AuthController : ControllerBase
         var user = await _context.Users
             .Include(u => u.Institute)
             .Include(u => u.StaffProfile)
+            .Include(u => u.ParentProfile)
             .FirstOrDefaultAsync(u => u.Id == userId);
 
         if (user == null)
@@ -261,7 +287,10 @@ public class AuthController : ControllerBase
                 FullName = user.FullName,
                 Email = user.Email,
                 Role = user.Role,
-                StaffId = user.StaffProfile?.Id
+                AccountStatus = user.AccountStatus,
+                PhotoPath = user.PhotoPath ?? user.StaffProfile?.PhotoPath ?? user.ParentProfile?.PhotoPath,
+                StaffId = user.StaffProfile?.Id,
+                ParentId = user.ParentProfile?.Id
             },
             Institute = user.Institute != null ? new InstituteDto
             {

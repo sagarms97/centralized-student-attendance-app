@@ -23,4 +23,5 @@ public class Institute : ISoftDeletable, IAuditable
     public ICollection<TimetableEntry> TimetableEntries { get; set; } = new List<TimetableEntry>();
     public ICollection<PeriodSwapRequest> PeriodSwapRequests { get; set; } = new List<PeriodSwapRequest>();
     public ICollection<AttendanceRecord> AttendanceRecords { get; set; } = new List<AttendanceRecord>();
+    public ICollection<Parent> Parents { get; set; } = new List<Parent>();
 }

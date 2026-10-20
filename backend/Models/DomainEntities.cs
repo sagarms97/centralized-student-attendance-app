@@ -59,6 +59,8 @@ public class Student : BaseTenantEntity
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public ICollection<AttendanceRecord> AttendanceRecords { get; set; } = new List<AttendanceRecord>();
+    public ICollection<ParentStudent> ParentLinks { get; set; } = new List<ParentStudent>();
+    public ICollection<LeaveRequest> LeaveRequests { get; set; } = new List<LeaveRequest>();
 }
 
 public class TimetableEntry : BaseTenantEntity
@@ -107,6 +109,7 @@ public static class AttendanceStatus
     public const string Present = "Present";
     public const string Absent = "Absent";
     public const string Late = "Late";
+    public const string OnLeave = "OnLeave";
 }
 
 public class AttendanceRecord : BaseTenantEntity
@@ -123,4 +126,51 @@ public class AttendanceRecord : BaseTenantEntity
     public int MarkedByUserId { get; set; }
     public User MarkedByUser { get; set; } = null!;
     public DateTime MarkedAt { get; set; } = DateTime.UtcNow;
+    public int? LeaveRequestId { get; set; }
+}
+
+public class Parent : BaseTenantEntity
+{
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string? Address { get; set; }
+    public string? PhotoPath { get; set; }
+
+    public ICollection<ParentStudent> ChildrenLinks { get; set; } = new List<ParentStudent>();
+    public ICollection<LeaveRequest> LeaveRequests { get; set; } = new List<LeaveRequest>();
+}
+
+public class ParentStudent : BaseTenantEntity
+{
+    public int ParentId { get; set; }
+    public Parent Parent { get; set; } = null!;
+    public int StudentId { get; set; }
+    public Student Student { get; set; } = null!;
+    public string Relationship { get; set; } = "Parent"; // Father, Mother, Guardian, etc.
+}
+
+public static class LeaveStatus
+{
+    public const string Pending = "Pending";
+    public const string Approved = "Approved";
+    public const string Rejected = "Rejected";
+}
+
+public class LeaveRequest : BaseTenantEntity
+{
+    public int StudentId { get; set; }
+    public Student Student { get; set; } = null!;
+    public int ParentId { get; set; }
+    public Parent Parent { get; set; } = null!;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string Status { get; set; } = LeaveStatus.Pending;
+    public int? ReviewedByUserId { get; set; }
+    public User? ReviewedByUser { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public string? ReviewRemarks { get; set; }
 }

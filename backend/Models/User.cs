@@ -5,6 +5,17 @@ public static class Roles
     public const string SuperAdmin = "SuperAdmin";
     public const string InstituteAdmin = "InstituteAdmin";
     public const string Staff = "Staff";
+    public const string Parent = "Parent";
+}
+
+public static class AccountStatuses
+{
+    public const string Active = "Active";
+    public const string Invited = "Invited";
+    public const string PendingOtp = "PendingOtp";
+    public const string PendingApproval = "PendingApproval";
+    public const string Rejected = "Rejected";
+    public const string Disabled = "Disabled";
 }
 
 public class User : ISoftDeletable, IAuditable
@@ -16,10 +27,13 @@ public class User : ISoftDeletable, IAuditable
     public string PasswordHash { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
     public string Role { get; set; } = Roles.Staff;
+    public string AccountStatus { get; set; } = AccountStatuses.Active;
+    public string? PhotoPath { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Staff? StaffProfile { get; set; }
+    public Parent? ParentProfile { get; set; }
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }
 

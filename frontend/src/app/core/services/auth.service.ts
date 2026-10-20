@@ -27,6 +27,8 @@ export class AuthService {
     return role === 'InstituteAdmin' || role === 'SuperAdmin';
   });
   isStaff = computed(() => this.currentUser()?.role === 'Staff');
+  isParent = computed(() => this.currentUser()?.role === 'Parent');
+  isSuperAdmin = computed(() => this.currentUser()?.role === 'SuperAdmin');
 
   registerInstitute(request: RegisterInstituteRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/register-institute`, request).pipe(

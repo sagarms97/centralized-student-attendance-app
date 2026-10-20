@@ -104,4 +104,105 @@ html, body {
     background-color: #ffebee;
     color: #c62828;
   }
+
+  &.badge-parent {
+    background-color: #f3e5f5;
+    color: #7b1fa2;
+  }
+
+  &.badge-leave {
+    background-color: #e0f7fa;
+    color: #00838f;
+  }
+}
+
+/* Global Responsive Rules */
+@media (max-width: 768px) {
+  .page-container {
+    padding: 14px 12px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      width: 100%;
+      gap: 8px;
+
+      button {
+        flex: 1 1 auto;
+      }
+    }
+  }
+
+  /* Make forms single column on mobile */
+  .dialog-form, .responsive-form {
+    .form-row {
+      flex-direction: column !important;
+      gap: 0 !important;
+
+      .flex-1, .flex-2, .flex-3 {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+      }
+    }
+  }
+
+  /* Touch-friendly touch targets */
+  button.mat-mdc-button-base {
+    min-height: 40px;
+  }
+
+  .responsive-table {
+    border: none !important;
+    background: transparent !important;
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: block;
+    }
+
+    tr.mat-mdc-row, tr.mat-row {
+      display: block;
+      margin-bottom: 14px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      padding: 12px 14px;
+      height: auto !important;
+    }
+
+    td.mat-mdc-cell, td.mat-cell {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0 !important;
+      border-bottom: 1px dashed #f1f5f9;
+      font-size: 0.875rem;
+
+      &:last-child {
+        border-bottom: none;
+        margin-top: 6px;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      &::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #64748b;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+    }
+  }
 }

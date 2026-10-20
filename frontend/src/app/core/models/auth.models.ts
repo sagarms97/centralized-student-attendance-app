@@ -3,8 +3,11 @@ export interface User {
   instituteId?: number;
   fullName: string;
   email: string;
-  role: 'SuperAdmin' | 'InstituteAdmin' | 'Staff';
+  role: 'SuperAdmin' | 'InstituteAdmin' | 'Staff' | 'Parent';
+  accountStatus?: string;
+  photoPath?: string;
   staffId?: number;
+  parentId?: number;
 }
 
 export interface Institute {

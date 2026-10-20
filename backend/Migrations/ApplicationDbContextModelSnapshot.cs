@@ -42,6 +42,9 @@ namespace StudentAttendance.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("LeaveRequestId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("MarkedAt")
                         .HasColumnType("datetime2");
 
@@ -172,6 +175,157 @@ namespace StudentAttendance.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Institutes");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.LeaveRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReviewRemarks")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("InstituteId", "StudentId", "Status");
+
+                    b.ToTable("LeaveRequests");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.Parent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PhotoPath")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.HasIndex("InstituteId", "Email")
+                        .IsUnique();
+
+                    b.ToTable("Parents");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.ParentStudent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Relationship")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("InstituteId", "ParentId", "StudentId")
+                        .IsUnique();
+
+                    b.ToTable("ParentStudents");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Period", b =>
@@ -518,6 +672,10 @@ namespace StudentAttendance.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AccountStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -539,6 +697,9 @@ namespace StudentAttendance.Api.Migrations
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PhotoPath")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Role")
@@ -603,6 +764,68 @@ namespace StudentAttendance.Api.Migrations
                         .HasForeignKey("InstituteId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.LeaveRequest", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Parent", "Parent")
+                        .WithMany("LeaveRequests")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("StudentAttendance.Api.Models.Student", "Student")
+                        .WithMany("LeaveRequests")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.Parent", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Institute", null)
+                        .WithMany("Parents")
+                        .HasForeignKey("InstituteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "User")
+                        .WithOne("ParentProfile")
+                        .HasForeignKey("StudentAttendance.Api.Models.Parent", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.ParentStudent", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Parent", "Parent")
+                        .WithMany("ChildrenLinks")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.Student", "Student")
+                        .WithMany("ParentLinks")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("Student");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Period", b =>
@@ -772,6 +995,8 @@ namespace StudentAttendance.Api.Migrations
 
                     b.Navigation("Classes");
 
+                    b.Navigation("Parents");
+
                     b.Navigation("PeriodSwapRequests");
 
                     b.Navigation("Periods");
@@ -785,6 +1010,13 @@ namespace StudentAttendance.Api.Migrations
                     b.Navigation("TimetableEntries");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.Parent", b =>
+                {
+                    b.Navigation("ChildrenLinks");
+
+                    b.Navigation("LeaveRequests");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Period", b =>
@@ -806,6 +1038,10 @@ namespace StudentAttendance.Api.Migrations
             modelBuilder.Entity("StudentAttendance.Api.Models.Student", b =>
                 {
                     b.Navigation("AttendanceRecords");
+
+                    b.Navigation("LeaveRequests");
+
+                    b.Navigation("ParentLinks");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Subject", b =>
@@ -822,6 +1058,8 @@ namespace StudentAttendance.Api.Migrations
 
             modelBuilder.Entity("StudentAttendance.Api.Models.User", b =>
                 {
+                    b.Navigation("ParentProfile");
+
                     b.Navigation("RefreshTokens");
 
                     b.Navigation("StaffProfile");

@@ -28,6 +28,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/students/student-list.component').then(m => m.StudentListComponent)
       },
       {
+        path: 'parents',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./features/parents/parents-list.component').then(m => m.ParentsListComponent)
+      },
+      {
         path: 'timetable',
         loadComponent: () => import('./features/timetable/timetable.component').then(m => m.TimetableComponent)
       },

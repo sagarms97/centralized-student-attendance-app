@@ -26,6 +26,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TimetableEntry> TimetableEntries => Set<TimetableEntry>();
     public DbSet<PeriodSwapRequest> PeriodSwapRequests => Set<PeriodSwapRequest>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<Parent> Parents => Set<Parent>();
+    public DbSet<ParentStudent> ParentStudents => Set<ParentStudent>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +43,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<TimetableEntry>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<PeriodSwapRequest>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<Parent>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<ParentStudent>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<LeaveRequest>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
 
         modelBuilder.Entity<Institute>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<User>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null) && e.IsActive);
@@ -202,6 +208,58 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(a => a.MarkedByUser)
                   .WithMany()
                   .HasForeignKey(a => a.MarkedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Parent
+        modelBuilder.Entity<Parent>(entity =>
+        {
+            entity.HasIndex(p => new { p.InstituteId, p.Email }).IsUnique();
+            entity.Property(p => p.FullName).HasMaxLength(150).IsRequired();
+            entity.Property(p => p.Email).HasMaxLength(150).IsRequired();
+            entity.Property(p => p.Phone).HasMaxLength(20).IsRequired();
+
+            entity.HasOne(p => p.User)
+                  .WithOne(u => u.ParentProfile)
+                  .HasForeignKey<Parent>(p => p.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ParentStudent
+        modelBuilder.Entity<ParentStudent>(entity =>
+        {
+            entity.HasIndex(ps => new { ps.InstituteId, ps.ParentId, ps.StudentId }).IsUnique();
+            entity.Property(ps => ps.Relationship).HasMaxLength(50).IsRequired();
+
+            entity.HasOne(ps => ps.Parent)
+                  .WithMany(p => p.ChildrenLinks)
+                  .HasForeignKey(ps => ps.ParentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(ps => ps.Student)
+                  .WithMany(s => s.ParentLinks)
+                  .HasForeignKey(ps => ps.StudentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // LeaveRequest
+        modelBuilder.Entity<LeaveRequest>(entity =>
+        {
+            entity.HasIndex(lr => new { lr.InstituteId, lr.StudentId, lr.Status });
+
+            entity.HasOne(lr => lr.Student)
+                  .WithMany(s => s.LeaveRequests)
+                  .HasForeignKey(lr => lr.StudentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(lr => lr.Parent)
+                  .WithMany(p => p.LeaveRequests)
+                  .HasForeignKey(lr => lr.ParentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(lr => lr.ReviewedByUser)
+                  .WithMany()
+                  .HasForeignKey(lr => lr.ReviewedByUserId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }
