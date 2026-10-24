@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './core/guards/auth.guard';
-import { adminGuard } from './core/guards/auth.guard';
+import { authGuard, adminGuard, superAdminGuard } from './core/guards/auth.guard';
 import { LoginComponent } from './features/auth/login/login.component';
 import { RegisterComponent } from './features/auth/register/register.component';
 import { LayoutComponent } from './features/layout/layout.component';
@@ -77,6 +76,21 @@ export const routes: Routes = [
       {
         path: 'leaves',
         loadComponent: () => import('./features/parents/leave-approvals.component').then(m => m.LeaveApprovalsComponent)
+      },
+      {
+        path: 'super-admin',
+        canActivate: [superAdminGuard],
+        loadComponent: () => import('./features/super-admin/super-admin-dashboard.component').then(m => m.SuperAdminDashboardComponent)
+      },
+      {
+        path: 'super-admin/institutes/:id',
+        canActivate: [superAdminGuard],
+        loadComponent: () => import('./features/super-admin/institute-detail.component').then(m => m.InstituteDetailComponent)
+      },
+      {
+        path: 'super-admin/audit-logs',
+        canActivate: [superAdminGuard],
+        loadComponent: () => import('./features/super-admin/audit-logs.component').then(m => m.AuditLogsComponent)
       }
     ]
   },

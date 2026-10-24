@@ -48,6 +48,8 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
             <span class="app-title">EduAttend</span>
             @if (authService.currentInstitute(); as inst) {
               <span class="institute-sub">{{ inst.name }}</span>
+            } @else if (authService.isSuperAdmin()) {
+              <span class="institute-sub">Platform Administration</span>
             }
           </div>
         </div>
@@ -94,10 +96,24 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
           [fixedTopGap]="isHandset() ? 56 : 0">
 
           <mat-nav-list>
-            <a mat-list-item routerLink="/app/dashboard" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" (click)="closeIfHandset()">
-              <mat-icon matListItemIcon>dashboard</mat-icon>
-              <span matListItemTitle>Dashboard</span>
-            </a>
+            @if (authService.isSuperAdmin()) {
+              <div class="nav-section-label">PLATFORM ADMIN</div>
+
+              <a mat-list-item routerLink="/app/super-admin" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>admin_panel_settings</mat-icon>
+                <span matListItemTitle>Platform Overview</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/super-admin/audit-logs" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>security</mat-icon>
+                <span matListItemTitle>Platform Audit Logs</span>
+              </a>
+            } @else {
+              <a mat-list-item routerLink="/app/dashboard" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>dashboard</mat-icon>
+                <span matListItemTitle>Dashboard</span>
+              </a>
+            }
 
             <!-- Institute Admin Menu -->
             @if (authService.isAdmin()) {
@@ -190,10 +206,22 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
       <!-- Bottom Navigation Bar for Mobile -->
       @if (isHandset()) {
         <nav class="bottom-nav">
-          <a routerLink="/app/dashboard" routerLinkActive="active-bottom" class="bottom-nav-item">
-            <mat-icon>dashboard</mat-icon>
-            <span>Home</span>
-          </a>
+          @if (authService.isSuperAdmin()) {
+            <a routerLink="/app/super-admin" routerLinkActive="active-bottom" class="bottom-nav-item">
+              <mat-icon>admin_panel_settings</mat-icon>
+              <span>Overview</span>
+            </a>
+
+            <a routerLink="/app/super-admin/audit-logs" routerLinkActive="active-bottom" class="bottom-nav-item">
+              <mat-icon>security</mat-icon>
+              <span>Audit Logs</span>
+            </a>
+          } @else {
+            <a routerLink="/app/dashboard" routerLinkActive="active-bottom" class="bottom-nav-item">
+              <mat-icon>dashboard</mat-icon>
+              <span>Home</span>
+            </a>
+          }
 
           @if (authService.isAdmin()) {
             <a routerLink="/app/students" routerLinkActive="active-bottom" class="bottom-nav-item">

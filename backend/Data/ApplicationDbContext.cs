@@ -33,6 +33,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<UserInvite> UserInvites => Set<UserInvite>();
     public DbSet<OtpVerification> OtpVerifications => Set<OtpVerification>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +55,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<PasswordResetToken>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId));
         modelBuilder.Entity<UserInvite>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<OtpVerification>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(e => _tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null);
 
         modelBuilder.Entity<Institute>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<User>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null) && e.IsActive);
@@ -332,6 +334,26 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(o => o.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // AuditLog
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasIndex(a => new { a.InstituteId, a.CreatedAt });
+            entity.HasIndex(a => new { a.UserId, a.CreatedAt });
+            entity.Property(a => a.Action).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.UserEmail).HasMaxLength(150).IsRequired();
+            entity.Property(a => a.IpAddress).HasMaxLength(50);
+
+            entity.HasOne(a => a.Institute)
+                  .WithMany()
+                  .HasForeignKey(a => a.InstituteId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(a => a.User)
+                  .WithMany()
+                  .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

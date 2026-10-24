@@ -124,6 +124,32 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "An error occurred during database migration. Falling back to EnsureCreated.");
         context.Database.EnsureCreated();
     }
+
+    // Seed default SuperAdmin if not exists
+    try
+    {
+        if (!context.Users.IgnoreQueryFilters().Any(u => u.Role == StudentAttendance.Api.Models.Roles.SuperAdmin))
+        {
+            var passwordService = scope.ServiceProvider.GetRequiredService<IPasswordService>();
+            var superAdmin = new StudentAttendance.Api.Models.User
+            {
+                Email = "superadmin@eduattend.com",
+                FullName = "Global Super Admin",
+                Role = StudentAttendance.Api.Models.Roles.SuperAdmin,
+                AccountStatus = StudentAttendance.Api.Models.AccountStatuses.Active,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            superAdmin.PasswordHash = passwordService.HashPassword(superAdmin, "Password@123");
+            context.Users.Add(superAdmin);
+            context.SaveChanges();
+        }
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "Could not seed default SuperAdmin.");
+    }
 }
 
 // Global Exception Handler

@@ -87,6 +87,50 @@ namespace StudentAttendance.Api.Migrations
                     b.ToTable("AttendanceRecords");
                 });
 
+            modelBuilder.Entity("StudentAttendance.Api.Models.AuditLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("UserEmail")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstituteId", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("StudentAttendance.Api.Models.ClassEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -955,6 +999,24 @@ namespace StudentAttendance.Api.Migrations
                     b.Navigation("Student");
 
                     b.Navigation("TimetableEntry");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.AuditLog", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Institute", "Institute")
+                        .WithMany()
+                        .HasForeignKey("InstituteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Institute");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.ClassEntity", b =>

@@ -238,6 +238,10 @@ export class DashboardComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (this.authService.isSuperAdmin()) {
+      this.router.navigate(['/app/super-admin']);
+      return;
+    }
     if (this.authService.isParent()) {
       this.router.navigate(['/app/parent-portal']);
       return;
