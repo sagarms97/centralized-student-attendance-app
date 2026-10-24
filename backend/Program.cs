@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using StudentAttendance.Api.Data;
 using StudentAttendance.Api.Middleware;
 using StudentAttendance.Api.Services;
+using StudentAttendance.Api.Services.Chatbot;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,9 @@ builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<INotificationChannel, EmailNotificationChannel>();
 builder.Services.AddScoped<INotificationChannel, WhatsAppNotificationChannel>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHttpClient("GeminiLlm");
+builder.Services.AddSingleton<IToolRegistry, ToolRegistry>();
+builder.Services.AddScoped<ILlmService, LlmService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 
 // CORS
