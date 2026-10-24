@@ -327,6 +327,59 @@ public class ChatbotService : IChatbotService
                 };
             }
 
+            case "RequestPeriodSwap":
+            {
+                if (role != Roles.Staff)
+                {
+                    return new ConfirmActionResponse { Success = false, Message = "Only teaching staff can submit period swap requests." };
+                }
+
+                using var doc = JsonDocument.Parse(request.PayloadJson);
+                var root = doc.RootElement;
+                int timetableEntryId = root.GetProperty("timetableEntryId").GetInt32();
+                int requesterStaffId = root.GetProperty("requesterStaffId").GetInt32();
+                int targetStaffId = root.GetProperty("targetStaffId").GetInt32();
+                var swapDate = DateOnly.Parse(root.GetProperty("swapDate").GetString()!);
+                string reason = root.GetProperty("reason").GetString() ?? "Schedule adjustment";
+
+                var targetStaff = await _context.StaffMembers.FirstOrDefaultAsync(s => s.Id == targetStaffId);
+                int targetInstId = instituteId ?? (targetStaff?.InstituteId ?? 1);
+
+                var swapRequest = new PeriodSwapRequest
+                {
+                    InstituteId = targetInstId,
+                    TimetableEntryId = timetableEntryId,
+                    RequesterStaffId = requesterStaffId,
+                    TargetStaffId = targetStaffId,
+                    SwapDate = swapDate,
+                    Reason = reason,
+                    Status = SwapStatus.Pending,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.PeriodSwapRequests.Add(swapRequest);
+                await _context.SaveChangesAsync();
+
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    InstituteId = targetInstId,
+                    UserId = userId,
+                    UserEmail = email,
+                    Action = "Chatbot.RequestPeriodSwap",
+                    Details = $"Requested period swap with faculty ID {targetStaffId} for date {swapDate:yyyy-MM-dd} via AI Assistant.",
+                    IpAddress = ipAddress,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+
+                return new ConfirmActionResponse
+                {
+                    Success = true,
+                    Message = $"Period swap request for {swapDate:yyyy-MM-dd} was sent to {targetStaff?.FullName ?? "your colleague"}!",
+                    ResultData = new { swapRequest.Id, swapRequest.Status }
+                };
+            }
+
             default:
                 return new ConfirmActionResponse
                 {

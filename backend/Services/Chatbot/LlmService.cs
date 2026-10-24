@@ -262,9 +262,8 @@ public class LlmService : ILlmService
         if (toolList.Any(t => t.Name == "toggle_institute_status") &&
             (msg.Contains("disable") || msg.Contains("deactivate") || msg.Contains("enable") || msg.Contains("activate")))
         {
-            bool activate = msg.Contains("enable") || msg.Contains("activate");
-            var match = Regex.Match(userMessage, @"(?:institute|college|code)\s+([A-Za-z0-9\-_]+)", RegexOptions.IgnoreCase);
-            string codeOrName = match.Success ? match.Groups[1].Value : "MIT-001";
+            bool activate = !msg.Contains("deactivate") && !msg.Contains("disable");
+            string codeOrName = ExtractCodeOrName(userMessage);
 
             var jsonArgs = JsonSerializer.Serialize(new { codeOrName, activate });
             using var d = JsonDocument.Parse(jsonArgs);
@@ -362,9 +361,29 @@ public class LlmService : ILlmService
             return new LlmDecision { SelectedToolName = "get_class_attendance_status", Arguments = emptyArgs };
         }
 
-        // 2. Pending swaps
+        // 2. Request period swap (Mutating Proposal)
+        if (toolList.Any(t => t.Name == "request_period_swap") &&
+            (msg.Contains("swap") && (msg.Contains("request") || msg.Contains("with") || msg.Contains("for period") || msg.Contains("period swap"))))
+        {
+            var match = Regex.Match(userMessage, @"(?:with|to)\s+([A-Za-z\s]+?)(?:\s+for|\s+on|\s+due|\s+because|$)", RegexOptions.IgnoreCase);
+            string targetTeacherName = match.Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value) ? match.Groups[1].Value.Trim() : "Alan";
+
+            int periodNumber = 1;
+            var pMatch = Regex.Match(userMessage, @"period\s+(\d+)", RegexOptions.IgnoreCase);
+            if (pMatch.Success && int.TryParse(pMatch.Groups[1].Value, out var parsedP)) periodNumber = parsedP;
+
+            string reason = "Schedule adjustment";
+            var rMatch = Regex.Match(userMessage, @"(?:because of|due to|reason|for)\s+([A-Za-z\s]+)", RegexOptions.IgnoreCase);
+            if (rMatch.Success && !string.IsNullOrWhiteSpace(rMatch.Groups[1].Value)) reason = rMatch.Groups[1].Value.Trim();
+
+            var jsonArgs = JsonSerializer.Serialize(new { targetTeacherName, periodNumber, reason });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "request_period_swap", Arguments = d.RootElement.Clone() };
+        }
+
+        // 3. Pending swaps
         if (toolList.Any(t => t.Name == "get_my_pending_swaps") &&
-            (msg.Contains("swap") || msg.Contains("pending swap") || msg.Contains("period swap")))
+            (msg.Contains("pending swap") || msg.Contains("my swaps") || msg.Contains("swap status") || msg.Contains("check swaps")))
         {
             return new LlmDecision { SelectedToolName = "get_my_pending_swaps", Arguments = emptyArgs };
         }

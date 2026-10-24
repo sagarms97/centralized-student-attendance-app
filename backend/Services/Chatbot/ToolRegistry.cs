@@ -1087,6 +1087,115 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
+
+        Register(new ChatTool
+        {
+            Name = "request_period_swap",
+            Description = "Initiates a timetable period swap request with another teacher for a specific date and reason. Generates a confirmation card.",
+            AllowedRoles = new[] { Roles.Staff },
+            IsMutating = true,
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    targetTeacherName = new { type = "string", description = "Name or email of the colleague teacher to swap periods with." },
+                    date = new { type = "string", description = "Target date for the swap in yyyy-MM-dd format (or 'tomorrow')." },
+                    periodNumber = new { type = "integer", description = "The period number to swap (e.g. 1, 2, 3)." },
+                    reason = new { type = "string", description = "Reason for the period swap request." }
+                },
+                required = new[] { "targetTeacherName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Missing user identity." };
+
+                var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.IsActive);
+                if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                string targetName = args.TryGetProperty("targetTeacherName", out var tnProp) ? tnProp.GetString() ?? "" : "";
+                var targetStaff = await db.StaffMembers
+                    .Where(s => s.InstituteId == staff.InstituteId && s.Id != staff.Id && s.IsActive)
+                    .FirstOrDefaultAsync(s => s.FullName.ToLower().Contains(targetName.ToLower()) || s.Email.ToLower().Contains(targetName.ToLower()));
+
+                if (targetStaff == null)
+                {
+                    targetStaff = await db.StaffMembers
+                        .Where(s => s.InstituteId == staff.InstituteId && s.Id != staff.Id && s.IsActive)
+                        .FirstOrDefaultAsync();
+                }
+
+                if (targetStaff == null)
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = "Could not locate a colleague faculty member to swap periods with in your institute." };
+                }
+
+                var swapDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1));
+                if (args.TryGetProperty("date", out var dProp) && DateOnly.TryParse(dProp.GetString(), out var parsedDate))
+                {
+                    swapDate = parsedDate;
+                }
+
+                int periodNum = 1;
+                if (args.TryGetProperty("periodNumber", out var pProp) && pProp.TryGetInt32(out var parsedP))
+                {
+                    periodNum = parsedP;
+                }
+
+                string reason = args.TryGetProperty("reason", out var rProp) ? rProp.GetString() ?? "Personal arrangement" : "Personal arrangement";
+
+                var dayOfWeek = swapDate.ToDateTime(TimeOnly.MinValue).DayOfWeek;
+                var slot = await db.TimetableEntries
+                    .Include(t => t.Subject)
+                    .Include(t => t.Class)
+                    .Include(t => t.Period)
+                    .Where(t => t.StaffId == staff.Id && t.DayOfWeek == dayOfWeek && t.IsActive)
+                    .FirstOrDefaultAsync(t => t.Period.PeriodNumber == periodNum)
+                    ?? await db.TimetableEntries
+                        .Include(t => t.Subject)
+                        .Include(t => t.Class)
+                        .Include(t => t.Period)
+                        .Where(t => t.StaffId == staff.Id && t.IsActive)
+                        .FirstOrDefaultAsync();
+
+                if (slot == null)
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = "You do not have any teaching periods scheduled to swap on that day." };
+                }
+
+                var payload = JsonSerializer.Serialize(new
+                {
+                    timetableEntryId = slot.Id,
+                    requesterStaffId = staff.Id,
+                    targetStaffId = targetStaff.Id,
+                    swapDate = swapDate.ToString("yyyy-MM-dd"),
+                    reason
+                });
+
+                return new ToolExecutionResult
+                {
+                    IsProposal = true,
+                    ResultText = $"I have prepared a **Period Swap Request** with **{targetStaff.FullName}** for **Period {slot.Period.PeriodNumber} ({slot.Subject.Name})** on **{swapDate:MMM dd, yyyy}**.\n\nPlease review and tap **Confirm & Submit** below:",
+                    Proposal = new ChatbotActionProposal
+                    {
+                        ActionType = "RequestPeriodSwap",
+                        Title = "Request Timetable Period Swap",
+                        Summary = $"Swap Period {slot.Period.PeriodNumber} ({slot.Subject.Name} - {slot.Class.Name}) on {swapDate:yyyy-MM-dd} with {targetStaff.FullName}.",
+                        Parameters = new Dictionary<string, string>
+                        {
+                            ["Colleague"] = targetStaff.FullName,
+                            ["Period"] = $"Period {slot.Period.PeriodNumber} ({slot.Period.StartTime:hh\\:mm} - {slot.Period.EndTime:hh\\:mm})",
+                            ["Subject"] = $"{slot.Subject.Name} ({slot.Class.Name} - {slot.Section})",
+                            ["Swap Date"] = swapDate.ToString("yyyy-MM-dd"),
+                            ["Reason"] = reason
+                        },
+                        PayloadJson = payload
+                    }
+                };
+            }
+        });
     }
     #endregion
 
