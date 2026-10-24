@@ -1,6 +1,7 @@
 import { Component, inject, ViewChild, ElementRef, AfterViewChecked, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
@@ -71,7 +72,7 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
         </div>
 
         <!-- Chat Messages Container -->
-        <div class="chat-messages" #scrollContainer>
+        <div class="chat-messages" #scrollContainer (click)="onChatContentClick($event)">
           @for (m of chatbotService.messages(); track m.id) {
             <div class="message-row" [class.user-row]="m.sender === 'user'" [class.bot-row]="m.sender === 'assistant'">
               @if (m.sender === 'assistant') {
@@ -372,15 +373,34 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
     }
     .header-actions {
       display: flex;
-      gap: 2px;
+      gap: 4px;
     }
     .header-btn {
       color: #ffffff !important;
-      width: 34px;
-      height: 34px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 36px !important;
+      height: 36px !important;
+      min-width: 36px !important;
+      padding: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+
+      ::ng-deep .mat-mdc-button-touch-target {
+        display: none !important;
+      }
+      mat-icon {
+        font-size: 20px !important;
+        width: 20px !important;
+        height: 20px !important;
+        line-height: 20px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 !important;
+        overflow: visible !important;
+      }
     }
 
     /* Message Thread */
@@ -685,12 +705,66 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       margin-left: auto;
     }
 
-    .mic-btn {
-      width: 36px;
-      height: 36px;
-      display: flex;
+    /* Markdown Navigation Links */
+    .chat-nav-link {
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
+      gap: 5px;
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3 !important;
+      font-weight: 600;
+      font-size: 12.5px;
+      padding: 4px 10px;
+      margin: 4px 2px;
+      border-radius: 12px;
+      text-decoration: none !important;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(79, 70, 229, 0.1);
+      transition: all 0.15s ease-in-out;
+      &:hover {
+        background: #4f46e5;
+        border-color: #4338ca;
+        color: #ffffff !important;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(79, 70, 229, 0.25);
+      }
+      .link-arrow {
+        font-size: 14px;
+        font-weight: bold;
+      }
+    }
+
+    .mic-btn,
+    .send-btn {
+      width: 36px !important;
+      height: 36px !important;
+      min-width: 36px !important;
+      padding: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+
+      ::ng-deep .mat-mdc-button-touch-target {
+        display: none !important;
+      }
+
+      mat-icon {
+        font-size: 20px !important;
+        width: 20px !important;
+        height: 20px !important;
+        line-height: 20px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 !important;
+        overflow: visible !important;
+      }
+    }
+
+    .mic-btn {
       color: #475569;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       &:hover {
@@ -731,11 +805,6 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       }
     }
     .send-btn {
-      width: 36px;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       color: #1a237e !important;
     }
   `]
@@ -744,6 +813,7 @@ export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
   chatbotService = inject(ChatbotService);
   authService = inject(AuthService);
   speechService = inject(SpeechRecognitionService);
+  router = inject(Router);
 
   @ViewChild('scrollContainer') private scrollContainer?: ElementRef;
   @ViewChild('messageInput') private messageInput?: ElementRef;
@@ -811,12 +881,28 @@ export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
     return Object.keys(params).map(k => ({ key: k, value: params[k] }));
   }
 
+  onChatContentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    const link = target.closest('a[data-url]') as HTMLElement | null;
+    if (link) {
+      event.preventDefault();
+      const url = link.getAttribute('data-url');
+      if (url) {
+        this.router.navigateByUrl(url);
+      }
+    }
+  }
+
   formatMessage(text: string): string {
     if (!text) return '';
     // Format bold: **text** -> <strong>text</strong>
     let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     // Format code: `text` -> <code>text</code>
     formatted = formatted.replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
+    // Format markdown links: [Title](url) -> <a class="chat-nav-link" href="javascript:void(0)" data-url="url"><span>Title</span><span class="link-arrow">↗</span></a>
+    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="chat-nav-link" href="javascript:void(0)" data-url="$2"><span>$1</span><span class="link-arrow">↗</span></a>');
+    // Replace newlines with <br>
+    formatted = formatted.replace(/\n/g, '<br>');
     return formatted;
   }
 }

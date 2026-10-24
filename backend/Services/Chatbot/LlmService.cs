@@ -161,6 +161,49 @@ public class LlmService : ILlmService
         JsonElement emptyArgs;
         using (var d = JsonDocument.Parse("{}")) { emptyArgs = d.RootElement.Clone(); }
 
+        #region Common Navigation to Menus and Screens
+        if (toolList.Any(t => t.Name == "navigate_to_page"))
+        {
+            bool isNavIntent = msg.StartsWith("go to") || msg.StartsWith("take me to") || msg.StartsWith("open ") ||
+                               msg.Contains("navigate to") || msg.Contains("where can i") || msg.Contains("where to") ||
+                               msg.Contains("how can i go") || msg.Contains("how to add") || msg.Contains("how do i add") ||
+                               msg.Contains("menu for") || msg.Contains("show screen") || msg.Contains("screen for") ||
+                               msg.Contains("take me") || msg.Contains("link to");
+
+            // Direct "add timetable" or "create timetable" request
+            if (msg.Contains("timetable") || msg.Contains("time table") || msg.Contains("schedule"))
+            {
+                if (msg.Contains("add") || msg.Contains("create") || msg.Contains("setup") || msg.Contains("new") || isNavIntent)
+                {
+                    var jsonArgs = JsonSerializer.Serialize(new { destination = "timetable" });
+                    using var d = JsonDocument.Parse(jsonArgs);
+                    return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
+                }
+            }
+
+            // If user says "go to subject adding" or "go to subjects"
+            if (isNavIntent)
+            {
+                string destination = "dashboard";
+                if (msg.Contains("subject") || msg.Contains("course")) destination = "subjects";
+                else if (msg.Contains("time") || msg.Contains("schedule") || msg.Contains("slot")) destination = "timetable";
+                else if (msg.Contains("student") || msg.Contains("admission") || msg.Contains("pupil")) destination = "students";
+                else if (msg.Contains("staff") || msg.Contains("teacher") || msg.Contains("faculty")) destination = "staff";
+                else if (msg.Contains("attend")) destination = "attendance";
+                else if (msg.Contains("report") || msg.Contains("defaulter")) destination = "reports";
+                else if (msg.Contains("approval")) destination = "approvals";
+                else if (msg.Contains("swap")) destination = "swaps";
+                else if (msg.Contains("leave")) destination = "leaves";
+                else if (msg.Contains("audit") || msg.Contains("log")) destination = "audit_logs";
+                else if (msg.Contains("college") || msg.Contains("institute")) destination = "institutes";
+
+                var jsonArgs = JsonSerializer.Serialize(new { destination });
+                using var d = JsonDocument.Parse(jsonArgs);
+                return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
+            }
+        }
+        #endregion
+
         #region SuperAdmin Tools Semantic Routing
         // Helper to extract institute code or name
         string ExtractCodeOrName(string input)
@@ -189,7 +232,7 @@ public class LlmService : ILlmService
 
         // 2. Institute Staff list
         if (toolList.Any(t => t.Name == "get_institute_staff_list") &&
-            (msg.Contains("staff in") || msg.Contains("staff for") || msg.Contains("teachers in") || msg.Contains("faculty in")))
+            (msg.Contains("staff in") || msg.Contains("staff for") || msg.Contains("staff list") || msg.Contains("teachers in") || msg.Contains("faculty in")))
         {
             string codeOrName = ExtractCodeOrName(userMessage);
             var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
@@ -199,7 +242,7 @@ public class LlmService : ILlmService
 
         // 3. Institute Student list
         if (toolList.Any(t => t.Name == "get_institute_student_list") &&
-            (msg.Contains("students in") || msg.Contains("students for") || msg.Contains("student roster for") || msg.Contains("roster in")))
+            (msg.Contains("students in") || msg.Contains("students for") || msg.Contains("student list") || msg.Contains("student roster") || msg.Contains("students for") || msg.Contains("roster in")))
         {
             string codeOrName = ExtractCodeOrName(userMessage);
             var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
@@ -288,21 +331,25 @@ public class LlmService : ILlmService
 
         // 3. Staff Directory
         if (toolList.Any(t => t.Name == "list_staff_directory") &&
-            (msg.Contains("staff directory") || msg.Contains("list staff") || msg.Contains("teachers list") || msg.Contains("our teachers") || msg.Contains("faculty members")))
+            (msg.Contains("staff") || msg.Contains("teacher") || msg.Contains("faculty")) &&
+            (msg.Contains("list") || msg.Contains("directory") || msg.Contains("show") || msg.Contains("view") || msg.Contains("who") || msg.Contains("members") || msg.Contains("all") || msg.Trim() == "staff" || msg.Trim() == "staffs" || msg.Trim() == "teachers" || msg.Trim() == "faculty"))
         {
             return new LlmDecision { SelectedToolName = "list_staff_directory", Arguments = emptyArgs };
         }
 
         // 4. Students Directory
         if (toolList.Any(t => t.Name == "list_institute_students") &&
-            (msg.Contains("list student") || msg.Contains("student roster") || msg.Contains("all student") || msg.Contains("search student")))
+            (msg.Contains("student") || msg.Contains("pupil")) &&
+            (msg.Contains("list") || msg.Contains("roster") || msg.Contains("directory") || msg.Contains("show") || msg.Contains("view") || msg.Contains("all") || msg.Contains("search") || msg.Trim() == "student" || msg.Trim() == "students"))
         {
             return new LlmDecision { SelectedToolName = "list_institute_students", Arguments = emptyArgs };
         }
 
         // 5. Subjects List
         if (toolList.Any(t => t.Name == "list_institute_subjects") &&
-            (msg.Contains("list subject") || msg.Contains("subjects configured") || msg.Contains("all subject") || msg.Contains("course catalog")))
+            (msg.Contains("subject") || msg.Contains("course")) &&
+            !msg.Contains("create") && !msg.Contains("add") &&
+            (msg.Contains("list") || msg.Contains("show") || msg.Contains("all") || msg.Contains("catalog") || msg.Contains("view") || msg.Trim() == "subjects" || msg.Trim() == "courses"))
         {
             return new LlmDecision { SelectedToolName = "list_institute_subjects", Arguments = emptyArgs };
         }
@@ -323,17 +370,14 @@ public class LlmService : ILlmService
 
         // 8. Institute Metrics
         if (toolList.Any(t => t.Name == "get_institute_metrics") &&
-            (msg.Contains("staff") || msg.Contains("teacher") || msg.Contains("subject") || msg.Contains("classes") || msg.Contains("strength") || msg.Contains("count")))
+            (msg.Contains("metric") || msg.Contains("overview") || msg.Contains("summary") || msg.Contains("statistics") || msg.Contains("how many") || msg.Contains("total count")))
         {
-            if (!msg.Contains("create") && !msg.Contains("add"))
-            {
-                return new LlmDecision { SelectedToolName = "get_institute_metrics", Arguments = emptyArgs };
-            }
+            return new LlmDecision { SelectedToolName = "get_institute_metrics", Arguments = emptyArgs };
         }
 
         // 9. Create Subject
         if (toolList.Any(t => t.Name == "create_subject") &&
-            (msg.Contains("create") || msg.Contains("add subject") || msg.Contains("new subject")))
+            (msg.Contains("create subject") || msg.Contains("add subject") || msg.Contains("new subject") || (msg.Contains("subject") && (msg.Contains("create") || msg.Contains("add")))))
         {
             string name = "New Subject";
             string code = "SUB-" + new Random().Next(100, 999);

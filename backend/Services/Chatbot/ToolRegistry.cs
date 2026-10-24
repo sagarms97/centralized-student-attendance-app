@@ -1414,6 +1414,110 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
+
+        Register(new ChatTool
+        {
+            Name = "navigate_to_page",
+            Description = "Provides direct navigation links to application screens and menus (Subjects, Timetable, Students, Staff, Attendance, Reports, Approvals, Dashboard, etc.).",
+            AllowedRoles = new[] { Roles.SuperAdmin, Roles.InstituteAdmin, Roles.Staff, Roles.Parent },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    destination = new { type = "string", description = "Target menu/screen: 'subjects', 'timetable', 'students', 'staff', 'attendance', 'reports', 'approvals', 'swaps', 'leaves', 'dashboard'" }
+                },
+                required = new[] { "destination" }
+            },
+            Handler = (user, args, sp) =>
+            {
+                string dest = args.TryGetProperty("destination", out var dProp) ? (dProp.GetString() ?? "").ToLowerInvariant().Trim() : "";
+
+                string pageTitle;
+                string path;
+                string description;
+
+                if (dest.Contains("subject"))
+                {
+                    pageTitle = "Subjects Management";
+                    path = "/app/subjects";
+                    description = "Manage curriculum subjects, create course codes, and assign department credits.";
+                }
+                else if (dest.Contains("time") || dest.Contains("schedule") || dest.Contains("slot"))
+                {
+                    pageTitle = "Timetable & Schedules";
+                    path = "/app/timetable";
+                    description = "Configure weekly periods, assign faculty to subjects, and view class schedules.";
+                }
+                else if (dest.Contains("student"))
+                {
+                    pageTitle = "Students Directory";
+                    path = "/app/students";
+                    description = "Manage student enrollments, search student profiles, and import students via Excel.";
+                }
+                else if (dest.Contains("staff") || dest.Contains("teacher") || dest.Contains("faculty"))
+                {
+                    pageTitle = "Staff & Faculty Directory";
+                    path = "/app/staff";
+                    description = "Manage faculty profiles, invite new staff members, and view department assignments.";
+                }
+                else if (dest.Contains("attend"))
+                {
+                    pageTitle = "Mark & View Attendance";
+                    path = "/app/attendance";
+                    description = "Take daily attendance for assigned classes and view session attendance registers.";
+                }
+                else if (dest.Contains("report") || dest.Contains("defaulter") || dest.Contains("analytic"))
+                {
+                    pageTitle = "Attendance & Defaulter Reports";
+                    path = "/app/reports";
+                    description = "Review institute attendance percentages and view defaulters below 75%.";
+                }
+                else if (dest.Contains("approv") || dest.Contains("pending"))
+                {
+                    pageTitle = "Account Approvals";
+                    path = "/app/approvals";
+                    description = "Review and approve pending self-registration requests from staff and parents.";
+                }
+                else if (dest.Contains("swap"))
+                {
+                    pageTitle = "Period Swap Requests";
+                    path = "/app/swaps";
+                    description = "Propose and respond to timetable lecture exchanges with colleagues.";
+                }
+                else if (dest.Contains("leave"))
+                {
+                    pageTitle = "Leave Approvals";
+                    path = "/app/leaves";
+                    description = "Review and manage student leave applications submitted by parents.";
+                }
+                else if (dest.Contains("audit") || dest.Contains("log"))
+                {
+                    pageTitle = "Audit Logs";
+                    path = "/app/super-admin/audit-logs";
+                    description = "Inspect immutable audit trails of administrative and security actions.";
+                }
+                else if (dest.Contains("college") || dest.Contains("institute"))
+                {
+                    pageTitle = "College Directory";
+                    path = "/app/super-admin";
+                    description = "Inspect registered institutes and onboard new colleges.";
+                }
+                else
+                {
+                    pageTitle = "Dashboard";
+                    path = "/app/dashboard";
+                    description = "Your central overview dashboard.";
+                }
+
+                return Task.FromResult(new ToolExecutionResult
+                {
+                    Success = true,
+                    ResultText = $"I can take you directly there!\n\n👉 **[{pageTitle}]({path})**\n{description}\n\nTap the link above to open this menu.",
+                    Data = new { pageTitle, path, description }
+                });
+            }
+        });
     }
     #endregion
 }
