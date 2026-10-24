@@ -30,6 +30,7 @@ builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<INotificationChannel, EmailNotificationChannel>();
 builder.Services.AddScoped<INotificationChannel, WhatsAppNotificationChannel>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IChatbotService, ChatbotService>();
 
 // CORS
 builder.Services.AddCors(options =>

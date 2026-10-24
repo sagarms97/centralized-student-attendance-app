@@ -17,6 +17,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { ApprovalService } from '../../core/services/approval.service';
 import { LeaveService } from '../../core/services/leave.service';
 import { ProfileDialogComponent } from '../profile/profile-dialog.component';
+import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
 
 @Component({
   selector: 'app-layout',
@@ -32,7 +33,8 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
     MatMenuModule,
     MatDividerModule,
     MatBadgeModule,
-    MatDialogModule
+    MatDialogModule,
+    AiChatbotComponent
   ],
   template: `
     <div class="layout-container" [class.mobile-layout]="isHandset()">
@@ -271,6 +273,9 @@ import { ProfileDialogComponent } from '../profile/profile-dialog.component';
           </button>
         </nav>
       }
+
+      <!-- Global AI Assistant Floating Widget -->
+      <app-ai-chatbot></app-ai-chatbot>
     </div>
   `,
   styles: [`
