@@ -2,6 +2,7 @@ import { Component, inject, ViewChild, ElementRef, AfterViewChecked, OnDestroy }
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
@@ -83,7 +84,7 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
 
               <div class="message-bubble" [class.user-bubble]="m.sender === 'user'" [class.bot-bubble]="m.sender === 'assistant'">
                 <!-- Formatted Message Text -->
-                <div class="message-text" [innerHTML]="formatMessage(m.text)"></div>
+                <div class="message-text" [innerHTML]="formatMessage(m.text)" (click)="onLinkClick($event)"></div>
 
                 <!-- Action Proposal Card (Human-in-the-Loop Confirmation) -->
                 @if (m.proposal) {
@@ -814,6 +815,7 @@ export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
   authService = inject(AuthService);
   speechService = inject(SpeechRecognitionService);
   router = inject(Router);
+  sanitizer = inject(DomSanitizer);
 
   @ViewChild('scrollContainer') private scrollContainer?: ElementRef;
   @ViewChild('messageInput') private messageInput?: ElementRef;
@@ -881,28 +883,37 @@ export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
     return Object.keys(params).map(k => ({ key: k, value: params[k] }));
   }
 
-  onChatContentClick(event: MouseEvent): void {
+  onLinkClick(event: MouseEvent): void {
     const target = event.target as HTMLElement;
-    const link = target.closest('a[data-url]') as HTMLElement | null;
-    if (link) {
+    const link = (target.tagName === 'A' ? target : target.closest('a')) as HTMLAnchorElement | null;
+    if (!link) return;
+
+    const url = link.getAttribute('data-url') || link.getAttribute('href');
+    if (url && (url.startsWith('/') || url.startsWith('#'))) {
       event.preventDefault();
-      const url = link.getAttribute('data-url');
-      if (url) {
-        this.router.navigateByUrl(url);
-      }
+      event.stopPropagation();
+      const cleanUrl = url.replace(/^#/, '');
+      this.router.navigateByUrl(cleanUrl).then(() => {
+        // Automatically minimize/close chatbot window so the user sees and interacts with the page
+        this.chatbotService.close();
+      });
     }
   }
 
-  formatMessage(text: string): string {
+  onChatContentClick(event: MouseEvent): void {
+    this.onLinkClick(event);
+  }
+
+  formatMessage(text: string): SafeHtml {
     if (!text) return '';
     // Format bold: **text** -> <strong>text</strong>
     let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     // Format code: `text` -> <code>text</code>
     formatted = formatted.replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
-    // Format markdown links: [Title](url) -> <a class="chat-nav-link" href="javascript:void(0)" data-url="url"><span>Title</span><span class="link-arrow">↗</span></a>
-    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="chat-nav-link" href="javascript:void(0)" data-url="$2"><span>$1</span><span class="link-arrow">↗</span></a>');
+    // Format markdown links: [Title](url) -> <a class="chat-nav-link" href="$2" data-url="$2"><span>$1</span><span class="link-arrow">↗</span></a>
+    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="chat-nav-link" href="$2" data-url="$2"><span>$1</span><span class="link-arrow">↗</span></a>');
     // Replace newlines with <br>
     formatted = formatted.replace(/\n/g, '<br>');
-    return formatted;
+    return this.sanitizer.bypassSecurityTrustHtml(formatted);
   }
 }
