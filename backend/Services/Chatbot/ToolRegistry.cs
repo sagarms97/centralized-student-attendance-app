@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StudentAttendance.Api.Data;
@@ -23,7 +22,10 @@ public class ToolRegistry : IToolRegistry
 
     public ToolRegistry()
     {
-        RegisterDefaultTools();
+        RegisterSuperAdminTools();
+        RegisterInstituteAdminTools();
+        RegisterStaffTools();
+        RegisterParentTools();
     }
 
     public void Register(ChatTool tool)
@@ -44,9 +46,9 @@ public class ToolRegistry : IToolRegistry
         return tool;
     }
 
-    private void RegisterDefaultTools()
+    #region SuperAdmin Read & Write Tools
+    private void RegisterSuperAdminTools()
     {
-        #region SuperAdmin Tools
         Register(new ChatTool
         {
             Name = "get_platform_overview",
@@ -83,8 +85,360 @@ public class ToolRegistry : IToolRegistry
                                  $"• **Total Students**: {totalStudents}\n" +
                                  $"• **Total Staff Members**: {totalStaff}\n" +
                                  $"• **Total Registered Parents**: {totalParents}\n" +
-                                 $"• **Platform Today's Attendance**: {todayPct}% across {todayRecords.Count} sessions",
+                                 $"• **Platform Today's Attendance**: {todayPct}% across {todayRecords.Count} sessions\n\n" +
+                                 $"[Open Platform Dashboard](/app/super-admin)",
                     Data = new { totalInstitutes, activeInstitutes, totalStudents, totalStaff, totalParents, todayPct }
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "list_institutes",
+            Description = "Lists registered college tenants with their code, status (Active/Disabled), and city. Caps at top 5 with show more link.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    search = new { type = "string", description = "Optional filter term by institute name or code." },
+                    status = new { type = "string", description = "Status filter: 'All', 'Active', or 'Inactive'." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string? search = args.TryGetProperty("search", out var sProp) ? sProp.GetString() : null;
+                string? status = args.TryGetProperty("status", out var stProp) ? stProp.GetString() : null;
+
+                var query = db.Institutes.IgnoreQueryFilters().AsQueryable();
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var term = search.ToLower().Trim();
+                    query = query.Where(i => i.Name.ToLower().Contains(term) || i.Code.ToLower().Contains(term) || i.City.ToLower().Contains(term));
+                }
+                if (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)) query = query.Where(i => i.IsActive);
+                else if (string.Equals(status, "Inactive", StringComparison.OrdinalIgnoreCase)) query = query.Where(i => !i.IsActive);
+
+                var totalCount = await query.CountAsync();
+                var insts = await query.OrderBy(i => i.Name).Take(5).ToListAsync();
+                if (insts.Count == 0) return new ToolExecutionResult { ResultText = "No institutes matched the search criteria." };
+
+                var lines = insts.Select(i => $"• **{i.Name}** (Code: `{i.Code}`) - {(i.IsActive ? "✅ Active" : "❌ Disabled")}, {i.City}");
+                string footer = totalCount > 5 ? $"\n*Showing top 5 of {totalCount} colleges.*" : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Registered Colleges ({totalCount})**:\n\n" + string.Join("\n", lines) + footer +
+                                 $"\n\n[Open Complete College Directory](/app/super-admin)",
+                    Data = insts.Select(i => new { i.Id, i.Name, i.Code, i.IsActive, i.City })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_institute_detail",
+            Description = "Retrieves complete metrics and drill-down summary for a specific college: staff count, student count, class strengths, today's attendance %, and contact info.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    codeOrName = new { type = "string", description = "College code (e.g. 'MIT-001') or name." }
+                },
+                required = new[] { "codeOrName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string codeOrName = args.TryGetProperty("codeOrName", out var cProp) ? cProp.GetString() ?? "" : "";
+
+                var inst = await db.Institutes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Code == codeOrName || i.Name.ToLower().Contains(codeOrName.ToLower()));
+
+                if (inst == null)
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = $"Could not locate any college matching '{codeOrName}'." };
+                }
+
+                int studentCount = await db.Students.IgnoreQueryFilters().CountAsync(s => s.InstituteId == inst.Id && s.IsActive);
+                int staffCount = await db.StaffMembers.IgnoreQueryFilters().CountAsync(s => s.InstituteId == inst.Id && s.IsActive);
+                int classCount = await db.Classes.IgnoreQueryFilters().CountAsync(c => c.InstituteId == inst.Id && c.IsActive);
+                int subjectCount = await db.Subjects.IgnoreQueryFilters().CountAsync(sb => sb.InstituteId == inst.Id && sb.IsActive);
+
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var attRecords = await db.AttendanceRecords.IgnoreQueryFilters()
+                    .Where(a => a.InstituteId == inst.Id && a.Date == today && a.IsActive)
+                    .ToListAsync();
+
+                double todayPct = 100.0;
+                if (attRecords.Count > 0)
+                {
+                    var p = attRecords.Count(r => r.Status == AttendanceStatus.Present);
+                    var l = attRecords.Count(r => r.Status == AttendanceStatus.Late);
+                    var lv = attRecords.Count(r => r.Status == AttendanceStatus.OnLeave);
+                    todayPct = Math.Round((p + (l * 0.5) + lv) / (double)attRecords.Count * 100, 1);
+                }
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 🏛️ **{inst.Name}** (Code: `{inst.Code}`)\n\n" +
+                                 $"• **Status**: {(inst.IsActive ? "✅ Active" : "❌ Disabled")}\n" +
+                                 $"• **Location**: {inst.City}, {inst.State} ({inst.Address})\n" +
+                                 $"• **Contact**: `{inst.ContactEmail}`, Phone: {inst.ContactPhone}\n" +
+                                 $"• **Students**: {studentCount} enrolled\n" +
+                                 $"• **Staff**: {staffCount} active faculty\n" +
+                                 $"• **Classes Configured**: {classCount}\n" +
+                                 $"• **Subjects Offered**: {subjectCount}\n" +
+                                 $"• **Today's Attendance**: {todayPct}% ({attRecords.Count} sessions recorded)\n\n" +
+                                 $"[Open Full College Drill-Down Screen](/app/super-admin/institutes/{inst.Id})",
+                    Data = new { inst.Id, inst.Name, inst.Code, studentCount, staffCount, classCount, todayPct }
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_institute_staff_list",
+            Description = "Lists staff members working at a specific college with their Employee ID, email, and specialization.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    codeOrName = new { type = "string", description = "College code or name." },
+                    limit = new { type = "integer", description = "Number of staff to retrieve (default 5)." }
+                },
+                required = new[] { "codeOrName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string codeOrName = args.TryGetProperty("codeOrName", out var cProp) ? cProp.GetString() ?? "" : "";
+                int limit = 5;
+                if (args.TryGetProperty("limit", out var lProp) && lProp.TryGetInt32(out var pL)) limit = Math.Clamp(pL, 1, 20);
+
+                var inst = await db.Institutes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Code == codeOrName || i.Name.ToLower().Contains(codeOrName.ToLower()));
+                if (inst == null) return new ToolExecutionResult { Success = false, ResultText = $"College '{codeOrName}' not found." };
+
+                var query = db.StaffMembers.IgnoreQueryFilters().Where(s => s.InstituteId == inst.Id && s.IsActive);
+                int totalStaff = await query.CountAsync();
+                var staff = await query.OrderBy(s => s.FullName).Take(limit).ToListAsync();
+
+                if (staff.Count == 0) return new ToolExecutionResult { ResultText = $"No active staff found for {inst.Name}." };
+
+                var lines = staff.Select(s => $"• **{s.FullName}** (ID: `{s.EmployeeId}`, Email: `{s.Email}`): *{s.SubjectSpecialization ?? "General"}*");
+                string more = totalStaff > limit ? $"\n*Showing top {limit} of {totalStaff} staff members.*" : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Staff Directory for {inst.Name} ({totalStaff})**:\n\n" + string.Join("\n", lines) + more +
+                                 $"\n\n[Open Staff Tab in College Drill-Down](/app/super-admin/institutes/{inst.Id})",
+                    Data = staff.Select(s => new { s.Id, s.FullName, s.EmployeeId, s.Email })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_institute_student_list",
+            Description = "Lists students enrolled at a specific college with their roll number, class, section, and attendance %.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    codeOrName = new { type = "string", description = "College code or name." },
+                    limit = new { type = "integer", description = "Number of students to display (default 5)." }
+                },
+                required = new[] { "codeOrName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string codeOrName = args.TryGetProperty("codeOrName", out var cProp) ? cProp.GetString() ?? "" : "";
+                int limit = 5;
+                if (args.TryGetProperty("limit", out var lProp) && lProp.TryGetInt32(out var pL)) limit = Math.Clamp(pL, 1, 20);
+
+                var inst = await db.Institutes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Code == codeOrName || i.Name.ToLower().Contains(codeOrName.ToLower()));
+                if (inst == null) return new ToolExecutionResult { Success = false, ResultText = $"College '{codeOrName}' not found." };
+
+                var query = db.Students.IgnoreQueryFilters().Include(s => s.Class).Where(s => s.InstituteId == inst.Id && s.IsActive);
+                int totalStudents = await query.CountAsync();
+                var students = await query.OrderBy(s => s.RollNo).Take(limit).ToListAsync();
+
+                if (students.Count == 0) return new ToolExecutionResult { ResultText = $"No active students found for {inst.Name}." };
+
+                var lines = new List<string>();
+                foreach (var st in students)
+                {
+                    var sRecs = await db.AttendanceRecords.IgnoreQueryFilters()
+                        .Where(a => a.StudentId == st.Id && a.IsActive)
+                        .ToListAsync();
+
+                    double pct = 100.0;
+                    if (sRecs.Count > 0)
+                    {
+                        var p = sRecs.Count(r => r.Status == AttendanceStatus.Present);
+                        var l = sRecs.Count(r => r.Status == AttendanceStatus.Late);
+                        var lv = sRecs.Count(r => r.Status == AttendanceStatus.OnLeave);
+                        pct = Math.Round((p + (l * 0.5) + lv) / (double)sRecs.Count * 100, 1);
+                    }
+                    lines.Add($"• **{st.FullName}** (Roll: `{st.RollNo}`, Class: {st.Class.Name}-{st.Section}): `{pct}%` attendance");
+                }
+
+                string more = totalStudents > limit ? $"\n*Showing top {limit} of {totalStudents} students.*" : "";
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Students Enrolled at {inst.Name} ({totalStudents})**:\n\n" + string.Join("\n", lines) + more +
+                                 $"\n\n[Open Student Roster in College Drill-Down](/app/super-admin/institutes/{inst.Id})",
+                    Data = students.Select(s => new { s.Id, s.FullName, s.RollNo })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_student_attendance_history",
+            Description = "Drills down into a student's full attendance history across sessions with present/absent counts and remarks.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    studentIdentifier = new { type = "string", description = "Student name or roll number (e.g. 'Rahul', 'GD1-01')." }
+                },
+                required = new[] { "studentIdentifier" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string idTerm = args.TryGetProperty("studentIdentifier", out var stProp) ? stProp.GetString() ?? "" : "";
+
+                var student = await db.Students.IgnoreQueryFilters()
+                    .Include(s => s.Class)
+                    .FirstOrDefaultAsync(s => s.RollNo == idTerm || s.FirstName.ToLower().Contains(idTerm.ToLower()) || (s.FirstName + " " + s.LastName).ToLower().Contains(idTerm.ToLower()));
+
+                if (student == null) return new ToolExecutionResult { Success = false, ResultText = $"No student found matching '{idTerm}'." };
+
+                var records = await db.AttendanceRecords.IgnoreQueryFilters()
+                    .Include(a => a.TimetableEntry)
+                        .ThenInclude(t => t.Subject)
+                    .Include(a => a.Period)
+                    .Where(a => a.StudentId == student.Id && a.IsActive)
+                    .OrderByDescending(a => a.Date)
+                    .ToListAsync();
+
+                int total = records.Count;
+                int p = records.Count(r => r.Status == AttendanceStatus.Present);
+                int aCount = records.Count(r => r.Status == AttendanceStatus.Absent);
+                int l = records.Count(r => r.Status == AttendanceStatus.Late);
+                int lv = records.Count(r => r.Status == AttendanceStatus.OnLeave);
+                double pct = total > 0 ? Math.Round((p + (l * 0.5) + lv) / (double)total * 100, 1) : 100.0;
+
+                var recent5 = records.Take(5).Select(r => $"• **{r.Date:yyyy-MM-dd}** (Period {r.Period?.PeriodNumber}, {r.TimetableEntry?.Subject?.Name}): **{r.Status}** {(string.IsNullOrWhiteSpace(r.Remarks) ? "" : " - " + r.Remarks)}");
+                string recentText = records.Count > 0 ? "\n\n**Last 5 Sessions Recorded**:\n" + string.Join("\n", recent5) : "\n\n*No attendance sessions recorded yet.*";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 🎓 Attendance History: **{student.FullName}**\n\n" +
+                                 $"• **Roll Number**: `{student.RollNo}`\n" +
+                                 $"• **Class**: {student.Class.Name} - Section {student.Section}\n" +
+                                 $"• **Overall Attendance**: `{pct}%`\n" +
+                                 $"• **Breakdown**: {p} Present, {aCount} Absent, {l} Late, {lv} On Leave (Total {total} sessions)" +
+                                 recentText +
+                                 $"\n\n[Open Student Record in College Drill-Down](/app/super-admin/institutes/{student.InstituteId})",
+                    Data = new { student.Id, student.FullName, pct, total, p, aCount, l, lv }
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_institute_subjects",
+            Description = "Lists academic subjects configured for a college with their subject codes.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    codeOrName = new { type = "string", description = "College code or name." }
+                },
+                required = new[] { "codeOrName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string codeOrName = args.TryGetProperty("codeOrName", out var cProp) ? cProp.GetString() ?? "" : "";
+                var inst = await db.Institutes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Code == codeOrName || i.Name.ToLower().Contains(codeOrName.ToLower()));
+                if (inst == null) return new ToolExecutionResult { Success = false, ResultText = $"College '{codeOrName}' not found." };
+
+                var subjects = await db.Subjects.IgnoreQueryFilters()
+                    .Where(sb => sb.InstituteId == inst.Id && sb.IsActive)
+                    .OrderBy(sb => sb.Name)
+                    .ToListAsync();
+
+                if (subjects.Count == 0) return new ToolExecutionResult { ResultText = $"No subjects configured yet for {inst.Name}." };
+
+                var lines = subjects.Select(sb => $"• **{sb.Name}** (Code: `{sb.Code}`)");
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Subjects Configured at {inst.Name} ({subjects.Count})**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Open Subjects Tab](/app/super-admin/institutes/{inst.Id})",
+                    Data = subjects.Select(sb => new { sb.Id, sb.Name, sb.Code })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_institute_timetable_summary",
+            Description = "Summarizes the weekly timetable distribution (scheduled teaching slots) for a college.",
+            AllowedRoles = new[] { Roles.SuperAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    codeOrName = new { type = "string", description = "College code or name." }
+                },
+                required = new[] { "codeOrName" }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                string codeOrName = args.TryGetProperty("codeOrName", out var cProp) ? cProp.GetString() ?? "" : "";
+                var inst = await db.Institutes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Code == codeOrName || i.Name.ToLower().Contains(codeOrName.ToLower()));
+                if (inst == null) return new ToolExecutionResult { Success = false, ResultText = $"College '{codeOrName}' not found." };
+
+                var entries = await db.TimetableEntries.IgnoreQueryFilters()
+                    .Where(t => t.InstituteId == inst.Id && t.IsActive)
+                    .ToListAsync();
+
+                var days = Enum.GetValues<DayOfWeek>().Where(d => d != DayOfWeek.Sunday);
+                var summaryLines = days.Select(d =>
+                {
+                    int slots = entries.Count(e => e.DayOfWeek == d);
+                    int teachers = entries.Where(e => e.DayOfWeek == d).Select(e => e.StaffId).Distinct().Count();
+                    return $"• **{d}**: {slots} teaching periods scheduled ({teachers} active teachers)";
+                });
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Weekly Timetable Schedule Summary: {inst.Name}**:\n\n" + string.Join("\n", summaryLines) +
+                                 $"\n\n[Open Timetable in College Drill-Down](/app/super-admin/institutes/{inst.Id})",
+                    Data = entries.Count
                 };
             }
         });
@@ -122,58 +476,14 @@ public class ToolRegistry : IToolRegistry
                 }
 
                 var logs = await query.OrderByDescending(a => a.CreatedAt).Take(limit).ToListAsync();
-                if (logs.Count == 0)
-                {
-                    return new ToolExecutionResult { ResultText = "No audit log records matched your query." };
-                }
+                if (logs.Count == 0) return new ToolExecutionResult { ResultText = "No audit log records matched your query." };
 
                 var lines = logs.Select(l => $"• **[{l.CreatedAt:yyyy-MM-dd HH:mm}]** `{l.Action}` by `{l.UserEmail}` ({l.Institute?.Name ?? "Platform"}): {l.Details}");
                 return new ToolExecutionResult
                 {
-                    ResultText = $"**Recent Platform Audit Trail ({logs.Count})**:\n\n" + string.Join("\n", lines),
+                    ResultText = $"**Recent Platform Audit Trail ({logs.Count})**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Open Full Platform Audit Log Viewer](/app/super-admin/audit-logs)",
                     Data = logs.Select(l => new { l.Id, l.Action, l.UserEmail, l.Details, l.CreatedAt })
-                };
-            }
-        });
-
-        Register(new ChatTool
-        {
-            Name = "list_institutes",
-            Description = "Lists registered college tenants with their code, status (Active/Disabled), and city.",
-            AllowedRoles = new[] { Roles.SuperAdmin },
-            ParametersSchema = new
-            {
-                type = "object",
-                properties = new
-                {
-                    search = new { type = "string", description = "Optional filter term by institute name or code." },
-                    status = new { type = "string", description = "Status filter: 'All', 'Active', or 'Inactive'." }
-                }
-            },
-            Handler = async (user, args, sp) =>
-            {
-                var db = sp.GetRequiredService<ApplicationDbContext>();
-                string? search = args.TryGetProperty("search", out var sProp) ? sProp.GetString() : null;
-                string? status = args.TryGetProperty("status", out var stProp) ? stProp.GetString() : null;
-
-                var query = db.Institutes.IgnoreQueryFilters().AsQueryable();
-                if (!string.IsNullOrWhiteSpace(search))
-                {
-                    var term = search.ToLower().Trim();
-                    query = query.Where(i => i.Name.ToLower().Contains(term) || i.Code.ToLower().Contains(term) || i.City.ToLower().Contains(term));
-                }
-                if (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)) query = query.Where(i => i.IsActive);
-                else if (string.Equals(status, "Inactive", StringComparison.OrdinalIgnoreCase)) query = query.Where(i => !i.IsActive);
-
-                var insts = await query.OrderBy(i => i.Name).Take(10).ToListAsync();
-                if (insts.Count == 0) return new ToolExecutionResult { ResultText = "No institutes matched the search criteria." };
-
-                var lines = insts.Select(i => $"• **{i.Name}** (Code: `{i.Code}`) - Status: {(i.IsActive ? "✅ Active" : "❌ Disabled")}, City: {i.City}");
-                return new ToolExecutionResult
-                {
-                    ResultText = $"**Registered Institutes ({insts.Count})**:\n\n" + string.Join("\n", lines) +
-                                 $"\n\n[Open Full Institute Directory](/app/super-admin)",
-                    Data = insts.Select(i => new { i.Id, i.Name, i.Code, i.IsActive, i.City })
                 };
             }
         });
@@ -232,9 +542,12 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
-        #endregion
+    }
+    #endregion
 
-        #region InstituteAdmin Tools
+    #region InstituteAdmin Read & Write Tools
+    private void RegisterInstituteAdminTools()
+    {
         Register(new ChatTool
         {
             Name = "get_today_attendance_summary",
@@ -259,7 +572,7 @@ public class ToolRegistry : IToolRegistry
                 {
                     return new ToolExecutionResult
                     {
-                        ResultText = $"No attendance has been submitted today ({today:MMM dd, yyyy}) yet. Teachers can mark attendance via the **Mark Attendance** tab."
+                        ResultText = $"No attendance has been submitted today ({today:MMM dd, yyyy}) yet.\n\n[Mark Attendance Now](/app/attendance)"
                     };
                 }
 
@@ -341,16 +654,195 @@ public class ToolRegistry : IToolRegistry
                 {
                     return new ToolExecutionResult
                     {
-                        ResultText = $"Great news! No students currently fall below the {threshold}% attendance threshold."
+                        ResultText = $"Great news! No students currently fall below the {threshold}% attendance threshold.\n\n[Open Defaulters Report](/app/reports)"
                     };
                 }
 
+                int totalDefaulters = defaulters.Count;
+                var displayList = defaulters.Take(5);
+                string moreText = totalDefaulters > 5 ? $"\n*Showing top 5 of {totalDefaulters} defaulters.*" : "";
+
                 return new ToolExecutionResult
                 {
-                    ResultText = $"**Students with Attendance Below {threshold}% ({defaulters.Count})**:\n\n" +
-                                 string.Join("\n", defaulters) +
-                                 $"\n\n[Open Defaulters Report](/app/reports)",
+                    ResultText = $"**Students Below {threshold}% Attendance ({totalDefaulters})**:\n\n" +
+                                 string.Join("\n", displayList) + moreText +
+                                 $"\n\n[Open Complete Defaulters Report](/app/reports)",
                     Data = defaulters
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "list_classes_and_strength",
+            Description = "Lists class grades and sections in the institute with student enrollment strength.",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Missing institute claim." };
+
+                var classes = await db.Classes
+                    .Include(c => c.Students)
+                    .Where(c => c.InstituteId == instId && c.IsActive)
+                    .OrderBy(c => c.Name)
+                    .ToListAsync();
+
+                if (classes.Count == 0) return new ToolExecutionResult { ResultText = "No classes configured for this institute yet." };
+
+                var lines = classes.Select(c => $"• **{c.Name}** (Sections: `{c.Sections}`): **{c.Students.Count(s => s.IsActive)}** enrolled students");
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Class Strength & Sections ({classes.Count} Classes)**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Manage Classes & Students](/app/students)",
+                    Data = classes.Select(c => new { c.Id, c.Name, Count = c.Students.Count })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "list_staff_directory",
+            Description = "Lists faculty and staff members belonging to the institute with contact emails and specializations.",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    search = new { type = "string", description = "Optional name or specialization search term." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Missing institute claim." };
+
+                string? search = args.TryGetProperty("search", out var sProp) ? sProp.GetString() : null;
+                var query = db.StaffMembers.Where(s => s.InstituteId == instId && s.IsActive);
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var term = search.ToLower().Trim();
+                    query = query.Where(s => s.FullName.ToLower().Contains(term) || (s.SubjectSpecialization != null && s.SubjectSpecialization.ToLower().Contains(term)));
+                }
+
+                int totalCount = await query.CountAsync();
+                var staff = await query.OrderBy(s => s.FullName).Take(5).ToListAsync();
+                if (staff.Count == 0) return new ToolExecutionResult { ResultText = "No staff members matched your query." };
+
+                var lines = staff.Select(s => $"• **{s.FullName}** (Emp ID: `{s.EmployeeId}`, Email: `{s.Email}`): *{s.SubjectSpecialization ?? "General"}*");
+                string more = totalCount > 5 ? $"\n*Showing top 5 of {totalCount} staff members.*" : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Institute Faculty Directory ({totalCount})**:\n\n" + string.Join("\n", lines) + more +
+                                 $"\n\n[Open Staff Directory Screen](/app/staff)",
+                    Data = staff.Select(s => new { s.Id, s.FullName, s.EmployeeId, s.Email })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "list_institute_students",
+            Description = "Lists students enrolled in the institute with roll numbers and class sections.",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    search = new { type = "string", description = "Optional student name or roll number filter." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Missing institute claim." };
+
+                string? search = args.TryGetProperty("search", out var sProp) ? sProp.GetString() : null;
+                var query = db.Students.Include(s => s.Class).Where(s => s.InstituteId == instId && s.IsActive);
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var term = search.ToLower().Trim();
+                    query = query.Where(s => s.FirstName.ToLower().Contains(term) || s.LastName.ToLower().Contains(term) || s.RollNo.ToLower().Contains(term));
+                }
+
+                int total = await query.CountAsync();
+                var students = await query.OrderBy(s => s.RollNo).Take(5).ToListAsync();
+                if (students.Count == 0) return new ToolExecutionResult { ResultText = "No students found matching your search." };
+
+                var lines = students.Select(s => $"• **{s.FullName}** (Roll: `{s.RollNo}`, Class: {s.Class.Name} - {s.Section})");
+                string more = total > 5 ? $"\n*Showing top 5 of {total} students.*" : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Institute Students Roster ({total})**:\n\n" + string.Join("\n", lines) + more +
+                                 $"\n\n[Open Students Management](/app/students)",
+                    Data = students.Select(s => new { s.Id, s.FullName, s.RollNo })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "list_institute_subjects",
+            Description = "Lists all configured academic subjects and course codes for the institute.",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Missing institute claim." };
+
+                var subs = await db.Subjects.Where(s => s.InstituteId == instId && s.IsActive).OrderBy(s => s.Name).ToListAsync();
+                if (subs.Count == 0) return new ToolExecutionResult { ResultText = "No subjects configured yet for this institute." };
+
+                var lines = subs.Select(s => $"• **{s.Name}** (Code: `{s.Code}`)");
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Institute Academic Subjects ({subs.Count})**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Manage Subject Directory](/app/subjects)",
+                    Data = subs.Select(s => new { s.Id, s.Name, s.Code })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_pending_approvals",
+            Description = "Checks for pending staff and parent user registration requests requiring admin approval.",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Missing institute claim." };
+
+                var pendingUsers = await db.Users
+                    .Where(u => u.InstituteId == instId && u.AccountStatus == AccountStatuses.PendingApproval && u.IsActive)
+                    .OrderByDescending(u => u.CreatedAt)
+                    .ToListAsync();
+
+                if (pendingUsers.Count == 0)
+                {
+                    return new ToolExecutionResult { ResultText = "No pending approval requests. All user accounts are up to date!" };
+                }
+
+                var lines = pendingUsers.Take(5).Select(u => $"• **{u.FullName}** (`{u.Email}`) - Role: `{u.Role}`, Registered: {u.CreatedAt:MMM dd, yyyy}");
+                string more = pendingUsers.Count > 5 ? $"\n*and {pendingUsers.Count - 5} more pending approval...*" : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Pending Registration Approvals ({pendingUsers.Count})**:\n\n" + string.Join("\n", lines) + more +
+                                 $"\n\n[Review & Approve Accounts](/app/approvals)",
+                    Data = pendingUsers.Count
                 };
             }
         });
@@ -365,10 +857,7 @@ public class ToolRegistry : IToolRegistry
             {
                 var db = sp.GetRequiredService<ApplicationDbContext>();
                 var instIdClaim = user.FindFirstValue("institute_id");
-                if (!int.TryParse(instIdClaim, out var instId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
-                }
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
 
                 var staffCount = await db.StaffMembers.CountAsync(s => s.InstituteId == instId && s.IsActive);
                 var subCount = await db.Subjects.CountAsync(s => s.InstituteId == instId && s.IsActive);
@@ -381,7 +870,8 @@ public class ToolRegistry : IToolRegistry
                                  $"• **Active Staff**: {staffCount}\n" +
                                  $"• **Total Subjects Configured**: {subCount}\n" +
                                  $"• **Total Classes**: {classCount}\n" +
-                                 $"• **Total Students**: {studentCount}",
+                                 $"• **Total Students**: {studentCount}\n\n" +
+                                 $"[Open Analytics Dashboard](/app/dashboard)",
                     Data = new { staffCount, subCount, classCount, studentCount }
                 };
             }
@@ -407,10 +897,7 @@ public class ToolRegistry : IToolRegistry
             {
                 await Task.CompletedTask;
                 var instIdClaim = user.FindFirstValue("institute_id");
-                if (!int.TryParse(instIdClaim, out var instId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Unauthorized: Institute identity is missing." };
-                }
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Unauthorized: Institute identity missing." };
 
                 string name = args.TryGetProperty("name", out var nProp) ? nProp.GetString() ?? "New Subject" : "New Subject";
                 string code = args.TryGetProperty("code", out var cProp) ? cProp.GetString() ?? "SUB-001" : "SUB-001";
@@ -438,9 +925,12 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
-        #endregion
+    }
+    #endregion
 
-        #region Staff Tools
+    #region Staff Read & Write Tools
+    private void RegisterStaffTools()
+    {
         Register(new ChatTool
         {
             Name = "get_my_timetable_today",
@@ -451,16 +941,10 @@ public class ToolRegistry : IToolRegistry
             {
                 var db = sp.GetRequiredService<ApplicationDbContext>();
                 var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (!int.TryParse(userIdStr, out var userId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
-                }
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
 
                 var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.IsActive);
-                if (staff == null)
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "No active staff profile linked to your user account." };
-                }
+                if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "No active staff profile linked to your user account." };
 
                 var todayDayOfWeek = DateTime.UtcNow.DayOfWeek;
                 var slots = await db.TimetableEntries
@@ -471,17 +955,106 @@ public class ToolRegistry : IToolRegistry
                     .OrderBy(t => t.Period.PeriodNumber)
                     .ToListAsync();
 
-                if (slots.Count == 0)
-                {
-                    return new ToolExecutionResult { ResultText = $"You have no scheduled teaching periods for today (**{todayDayOfWeek}**)." };
-                }
+                if (slots.Count == 0) return new ToolExecutionResult { ResultText = $"You have no scheduled teaching periods for today (**{todayDayOfWeek}**).\n\n[Open Full Weekly Timetable](/app/timetable)" };
 
                 var lines = slots.Select(s => $"• **Period {s.Period.PeriodNumber} ({s.Period.StartTime:hh\\:mm} - {s.Period.EndTime:hh\\:mm})**: {s.Subject.Name} for **{s.Class.Name} - {s.Section}**");
                 return new ToolExecutionResult
                 {
                     ResultText = $"**Your Teaching Schedule for Today ({todayDayOfWeek})**:\n\n" + string.Join("\n", lines) +
-                                 $"\n\n[Open Timetable & Swaps](/app/timetable)",
+                                 $"\n\n[Open Timetable & Manage Swaps](/app/timetable)",
                     Data = slots.Select(s => new { s.Period.PeriodNumber, Subject = s.Subject.Name, Class = s.Class.Name, s.Section })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_class_attendance_status",
+            Description = "Checks today's attendance marking status for all classes assigned to the authenticated teacher.",
+            AllowedRoles = new[] { Roles.Staff },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Missing user identity." };
+
+                var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.IsActive);
+                if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var todayDay = DateTime.UtcNow.DayOfWeek;
+
+                var slots = await db.TimetableEntries
+                    .Include(t => t.Class)
+                    .Include(t => t.Subject)
+                    .Include(t => t.Period)
+                    .Where(t => t.StaffId == staff.Id && t.DayOfWeek == todayDay && t.IsActive)
+                    .ToListAsync();
+
+                if (slots.Count == 0) return new ToolExecutionResult { ResultText = "You have no scheduled teaching slots today to mark attendance for." };
+
+                var statusLines = new List<string>();
+                foreach (var sl in slots)
+                {
+                    bool marked = await db.AttendanceRecords.AnyAsync(a =>
+                        a.TimetableEntryId == sl.Id &&
+                        a.Date == today &&
+                        a.IsActive);
+
+                    string icon = marked ? "✅ Marked" : "⏳ Pending";
+                    statusLines.Add($"• **Period {sl.Period.PeriodNumber} ({sl.Subject.Name} - {sl.Class.Name} {sl.Section})**: {icon}");
+                }
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Today's Teaching Periods Attendance Status**:\n\n" + string.Join("\n", statusLines) +
+                                 $"\n\n[Mark Attendance Now](/app/attendance)",
+                    Data = statusLines
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_my_pending_swaps",
+            Description = "Checks the status of your requested and received timetable period swap requests.",
+            AllowedRoles = new[] { Roles.Staff },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Missing user identity." };
+
+                var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.IsActive);
+                if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                var swaps = await db.PeriodSwapRequests
+                    .Include(s => s.RequesterStaff)
+                    .Include(s => s.TargetStaff)
+                    .Include(s => s.TimetableEntry)
+                        .ThenInclude(t => t.Subject)
+                    .Where(s => (s.RequesterStaffId == staff.Id || s.TargetStaffId == staff.Id) && s.Status == SwapStatus.Pending && s.IsActive)
+                    .OrderByDescending(s => s.SwapDate)
+                    .ToListAsync();
+
+                if (swaps.Count == 0)
+                {
+                    return new ToolExecutionResult { ResultText = "You have no pending period swap requests.\n\n[Request Period Swap](/app/swaps)" };
+                }
+
+                var lines = swaps.Select(s =>
+                {
+                    string dir = s.RequesterStaffId == staff.Id ? $"Sent to **{s.TargetStaff.FullName}**" : $"Received from **{s.RequesterStaff.FullName}**";
+                    return $"• **{s.SwapDate:yyyy-MM-dd}** ({s.TimetableEntry.Subject.Name}): {dir} - Status: `{s.Status}`";
+                });
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Your Pending Period Swap Requests ({swaps.Count})**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Open Swaps Management](/app/swaps)",
+                    Data = new { count = swaps.Count }
                 };
             }
         });
@@ -496,10 +1069,7 @@ public class ToolRegistry : IToolRegistry
             {
                 var db = sp.GetRequiredService<ApplicationDbContext>();
                 var instIdClaim = user.FindFirstValue("institute_id");
-                if (!int.TryParse(instIdClaim, out var instId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
-                }
+                if (!int.TryParse(instIdClaim, out var instId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
 
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
                 var records = await db.AttendanceRecords
@@ -517,9 +1087,12 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
-        #endregion
+    }
+    #endregion
 
-        #region Parent Tools
+    #region Parent Read & Write Tools
+    private void RegisterParentTools()
+    {
         Register(new ChatTool
         {
             Name = "get_my_children_attendance",
@@ -530,10 +1103,7 @@ public class ToolRegistry : IToolRegistry
             {
                 var db = sp.GetRequiredService<ApplicationDbContext>();
                 var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (!int.TryParse(userIdStr, out var userId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
-                }
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
 
                 var parent = await db.Parents
                     .Include(p => p.ChildrenLinks)
@@ -577,8 +1147,84 @@ public class ToolRegistry : IToolRegistry
 
                 return new ToolExecutionResult
                 {
-                    ResultText = string.Join("\n\n", summaries) + "\n\n[Open Full Parent Portal](/app/parent-portal)",
+                    ResultText = string.Join("\n\n", summaries) + "\n\n[Open Full Parent Portal & Calendar](/app/parent-portal)",
                     Data = children.Select(c => new { c.Id, c.FullName, c.RollNo })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_leave_history",
+            Description = "Fetches submitted student leave applications and their approval status (Pending, Approved, Rejected).",
+            AllowedRoles = new[] { Roles.Parent },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
+
+                var parent = await db.Parents.FirstOrDefaultAsync(p => p.UserId == userId);
+                if (parent == null) return new ToolExecutionResult { Success = false, ResultText = "Parent profile not found." };
+
+                var leaves = await db.LeaveRequests
+                    .Include(l => l.Student)
+                    .Where(l => l.ParentId == parent.Id && l.IsActive)
+                    .OrderByDescending(l => l.StartDate)
+                    .Take(5)
+                    .ToListAsync();
+
+                if (leaves.Count == 0)
+                {
+                    return new ToolExecutionResult { ResultText = "You have not submitted any leave requests yet.\n\n[Apply For Student Leave](/app/leaves)" };
+                }
+
+                var lines = leaves.Select(l =>
+                {
+                    string statusBadge = l.Status == LeaveStatus.Approved ? "✅ Approved" : (l.Status == LeaveStatus.Rejected ? "❌ Rejected" : "⏳ Pending");
+                    return $"• **{l.Student.FullName}**: {l.StartDate:yyyy-MM-dd} to {l.EndDate:yyyy-MM-dd} ({l.Reason}) - {statusBadge}";
+                });
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Your Recent Leave Applications ({leaves.Count})**:\n\n" + string.Join("\n", lines) +
+                                 $"\n\n[Open Leave History & Applications](/app/leaves)",
+                    Data = leaves.Select(l => new { l.Id, l.Status, l.StartDate, l.EndDate })
+                };
+            }
+        });
+
+        Register(new ChatTool
+        {
+            Name = "get_parent_profile",
+            Description = "Displays the parent's registered contact info and linked children details.",
+            AllowedRoles = new[] { Roles.Parent },
+            ParametersSchema = new { type = "object", properties = new { } },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
+
+                var parent = await db.Parents
+                    .Include(p => p.ChildrenLinks)
+                        .ThenInclude(cl => cl.Student)
+                            .ThenInclude(s => s.Class)
+                    .FirstOrDefaultAsync(p => p.UserId == userId);
+
+                if (parent == null) return new ToolExecutionResult { Success = false, ResultText = "Parent profile not found." };
+
+                var childNames = parent.ChildrenLinks.Select(cl => $"{cl.Student.FullName} ({cl.Student.Class.Name} - {cl.Student.Section})");
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 👨‍👩‍👦 **Parent Profile: {parent.FullName}**\n\n" +
+                                 $"• **Email**: `{parent.Email}`\n" +
+                                 $"• **Phone**: {parent.Phone}\n" +
+                                 $"• **Linked Children**: {string.Join(", ", childNames)}\n\n" +
+                                 $"[Open Parent Portal](/app/parent-portal)",
+                    Data = new { parent.Id, parent.FullName, parent.Email, parent.Phone }
                 };
             }
         });
@@ -602,10 +1248,7 @@ public class ToolRegistry : IToolRegistry
             {
                 var db = sp.GetRequiredService<ApplicationDbContext>();
                 var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (!int.TryParse(userIdStr, out var userId))
-                {
-                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
-                }
+                if (!int.TryParse(userIdStr, out var userId)) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve user identity." };
 
                 var parent = await db.Parents
                     .Include(p => p.ChildrenLinks)
@@ -662,6 +1305,6 @@ public class ToolRegistry : IToolRegistry
                 };
             }
         });
-        #endregion
     }
+    #endregion
 }

@@ -65,7 +65,6 @@ public class LlmService : ILlmService
 
         var role = user.FindFirstValue(ClaimTypes.Role) ?? "User";
 
-        // Build Gemini tool function declarations
         var functionDeclarations = availableTools.Select(t => new
         {
             name = t.Name,
@@ -159,29 +158,107 @@ public class LlmService : ILlmService
         var toolList = availableTools.ToList();
         var role = user.FindFirstValue(ClaimTypes.Role) ?? "User";
 
-        // Helper to create empty JsonElement
         JsonElement emptyArgs;
         using (var d = JsonDocument.Parse("{}")) { emptyArgs = d.RootElement.Clone(); }
 
-        #region SuperAdmin Matching
+        #region SuperAdmin Tools Semantic Routing
+        // Helper to extract institute code or name
+        string ExtractCodeOrName(string input)
+        {
+            var codeMatch = Regex.Match(input, @"\b([A-Za-z]{2,10}-[0-9]{3,4})\b");
+            if (codeMatch.Success) return codeMatch.Groups[1].Value;
+
+            var match = Regex.Match(input, @"(?:for\s+college|for\s+institute|in\s+college|in\s+institute|for|in|about|college|institute)\s+([A-Za-z0-9\-_]+)", RegexOptions.IgnoreCase);
+            if (match.Success && !string.Equals(match.Groups[1].Value, "college", StringComparison.OrdinalIgnoreCase) && !string.Equals(match.Groups[1].Value, "institute", StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Groups[1].Value.Trim();
+            }
+            return "MIT-001";
+        }
+
+        // 1. History of student attendance
+        if (toolList.Any(t => t.Name == "get_student_attendance_history") &&
+            (msg.Contains("attendance history") || msg.Contains("student attendance") || msg.Contains("sessions for student")))
+        {
+            var match = Regex.Match(userMessage, @"(?:for\s+student|for|student)\s+([A-Za-z0-9\-\s]+)", RegexOptions.IgnoreCase);
+            string term = match.Success && !string.Equals(match.Groups[1].Value.Trim(), "student", StringComparison.OrdinalIgnoreCase) ? match.Groups[1].Value.Trim() : "Sagar";
+            var jsonArgs = JsonSerializer.Serialize(new { studentIdentifier = term });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_student_attendance_history", Arguments = d.RootElement.Clone() };
+        }
+
+        // 2. Institute Staff list
+        if (toolList.Any(t => t.Name == "get_institute_staff_list") &&
+            (msg.Contains("staff in") || msg.Contains("staff for") || msg.Contains("teachers in") || msg.Contains("faculty in")))
+        {
+            string codeOrName = ExtractCodeOrName(userMessage);
+            var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_institute_staff_list", Arguments = d.RootElement.Clone() };
+        }
+
+        // 3. Institute Student list
+        if (toolList.Any(t => t.Name == "get_institute_student_list") &&
+            (msg.Contains("students in") || msg.Contains("students for") || msg.Contains("student roster for") || msg.Contains("roster in")))
+        {
+            string codeOrName = ExtractCodeOrName(userMessage);
+            var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_institute_student_list", Arguments = d.RootElement.Clone() };
+        }
+
+        // 4. Institute Subjects list
+        if (toolList.Any(t => t.Name == "get_institute_subjects") &&
+            (msg.Contains("subjects in") || msg.Contains("subjects for") || msg.Contains("courses in")))
+        {
+            string codeOrName = ExtractCodeOrName(userMessage);
+            var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_institute_subjects", Arguments = d.RootElement.Clone() };
+        }
+
+        // 5. Institute Timetable summary
+        if (toolList.Any(t => t.Name == "get_institute_timetable_summary") &&
+            (msg.Contains("timetable summary") || msg.Contains("schedule summary for") || msg.Contains("teaching slots in")))
+        {
+            string codeOrName = ExtractCodeOrName(userMessage);
+            var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_institute_timetable_summary", Arguments = d.RootElement.Clone() };
+        }
+
+        // 6. Institute Detail drill-down
+        if (toolList.Any(t => t.Name == "get_institute_detail") &&
+            (msg.Contains("detail for") || msg.Contains("drill down") || msg.Contains("college info") || msg.Contains("institute info") || msg.Contains("show college")))
+        {
+            string codeOrName = ExtractCodeOrName(userMessage);
+            var jsonArgs = JsonSerializer.Serialize(new { codeOrName });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_institute_detail", Arguments = d.RootElement.Clone() };
+        }
+
+        // 7. Platform Overview
         if (toolList.Any(t => t.Name == "get_platform_overview") &&
             (msg.Contains("overview") || msg.Contains("platform") || msg.Contains("stats") || msg.Contains("how many institute") || msg.Contains("total college")))
         {
             return new LlmDecision { SelectedToolName = "get_platform_overview", Arguments = emptyArgs };
         }
 
+        // 8. Audit Logs
         if (toolList.Any(t => t.Name == "get_recent_audit_logs") &&
             (msg.Contains("audit") || msg.Contains("log") || msg.Contains("security") || msg.Contains("trail") || msg.Contains("history")))
         {
             return new LlmDecision { SelectedToolName = "get_recent_audit_logs", Arguments = emptyArgs };
         }
 
+        // 9. List Colleges
         if (toolList.Any(t => t.Name == "list_institutes") &&
             (msg.Contains("list") || msg.Contains("colleges") || msg.Contains("institutes") || msg.Contains("directory")))
         {
             return new LlmDecision { SelectedToolName = "list_institutes", Arguments = emptyArgs };
         }
 
+        // 10. Toggle status
         if (toolList.Any(t => t.Name == "toggle_institute_status") &&
             (msg.Contains("disable") || msg.Contains("deactivate") || msg.Contains("enable") || msg.Contains("activate")))
         {
@@ -195,19 +272,57 @@ public class LlmService : ILlmService
         }
         #endregion
 
-        #region InstituteAdmin Matching
+        #region InstituteAdmin Tools Semantic Routing
+        // 1. Pending Approvals
+        if (toolList.Any(t => t.Name == "get_pending_approvals") &&
+            (msg.Contains("pending approval") || msg.Contains("approvals") || msg.Contains("account approval") || msg.Contains("registration request")))
+        {
+            return new LlmDecision { SelectedToolName = "get_pending_approvals", Arguments = emptyArgs };
+        }
+
+        // 2. Class Strength
+        if (toolList.Any(t => t.Name == "list_classes_and_strength") &&
+            (msg.Contains("class strength") || msg.Contains("classes and section") || msg.Contains("class list") || msg.Contains("how many classes")))
+        {
+            return new LlmDecision { SelectedToolName = "list_classes_and_strength", Arguments = emptyArgs };
+        }
+
+        // 3. Staff Directory
+        if (toolList.Any(t => t.Name == "list_staff_directory") &&
+            (msg.Contains("staff directory") || msg.Contains("list staff") || msg.Contains("teachers list") || msg.Contains("our teachers") || msg.Contains("faculty members")))
+        {
+            return new LlmDecision { SelectedToolName = "list_staff_directory", Arguments = emptyArgs };
+        }
+
+        // 4. Students Directory
+        if (toolList.Any(t => t.Name == "list_institute_students") &&
+            (msg.Contains("list student") || msg.Contains("student roster") || msg.Contains("all student") || msg.Contains("search student")))
+        {
+            return new LlmDecision { SelectedToolName = "list_institute_students", Arguments = emptyArgs };
+        }
+
+        // 5. Subjects List
+        if (toolList.Any(t => t.Name == "list_institute_subjects") &&
+            (msg.Contains("list subject") || msg.Contains("subjects configured") || msg.Contains("all subject") || msg.Contains("course catalog")))
+        {
+            return new LlmDecision { SelectedToolName = "list_institute_subjects", Arguments = emptyArgs };
+        }
+
+        // 6. Today's Attendance
         if (toolList.Any(t => t.Name == "get_today_attendance_summary") &&
             (msg.Contains("attendance") || msg.Contains("today") || msg.Contains("snapshot") || msg.Contains("present") || msg.Contains("absent")))
         {
             return new LlmDecision { SelectedToolName = "get_today_attendance_summary", Arguments = emptyArgs };
         }
 
+        // 7. Defaulters
         if (toolList.Any(t => t.Name == "get_low_attendance_defaulters") &&
             (msg.Contains("low") || msg.Contains("defaulter") || msg.Contains("shortage") || msg.Contains("75")))
         {
             return new LlmDecision { SelectedToolName = "get_low_attendance_defaulters", Arguments = emptyArgs };
         }
 
+        // 8. Institute Metrics
         if (toolList.Any(t => t.Name == "get_institute_metrics") &&
             (msg.Contains("staff") || msg.Contains("teacher") || msg.Contains("subject") || msg.Contains("classes") || msg.Contains("strength") || msg.Contains("count")))
         {
@@ -217,6 +332,7 @@ public class LlmService : ILlmService
             }
         }
 
+        // 9. Create Subject
         if (toolList.Any(t => t.Name == "create_subject") &&
             (msg.Contains("create") || msg.Contains("add subject") || msg.Contains("new subject")))
         {
@@ -238,13 +354,29 @@ public class LlmService : ILlmService
         }
         #endregion
 
-        #region Staff Matching
+        #region Staff Tools Semantic Routing
+        // 1. Class attendance status
+        if (toolList.Any(t => t.Name == "get_class_attendance_status") &&
+            (msg.Contains("attendance status for my class") || msg.Contains("is attendance marked") || msg.Contains("classes marked today") || msg.Contains("pending attendance")))
+        {
+            return new LlmDecision { SelectedToolName = "get_class_attendance_status", Arguments = emptyArgs };
+        }
+
+        // 2. Pending swaps
+        if (toolList.Any(t => t.Name == "get_my_pending_swaps") &&
+            (msg.Contains("swap") || msg.Contains("pending swap") || msg.Contains("period swap")))
+        {
+            return new LlmDecision { SelectedToolName = "get_my_pending_swaps", Arguments = emptyArgs };
+        }
+
+        // 3. Timetable today
         if (toolList.Any(t => t.Name == "get_my_timetable_today") &&
             (msg.Contains("class") || msg.Contains("schedule") || msg.Contains("timetable") || msg.Contains("today") || msg.Contains("period")))
         {
             return new LlmDecision { SelectedToolName = "get_my_timetable_today", Arguments = emptyArgs };
         }
 
+        // 4. Institute Attendance today
         if (toolList.Any(t => t.Name == "get_institute_attendance_today") &&
             (msg.Contains("attendance") || msg.Contains("present") || msg.Contains("absent")))
         {
@@ -252,13 +384,29 @@ public class LlmService : ILlmService
         }
         #endregion
 
-        #region Parent Matching
+        #region Parent Tools Semantic Routing
+        // 1. Leave history
+        if (toolList.Any(t => t.Name == "get_leave_history") &&
+            (msg.Contains("leave history") || msg.Contains("my leave") || msg.Contains("past leave") || msg.Contains("leave status")))
+        {
+            return new LlmDecision { SelectedToolName = "get_leave_history", Arguments = emptyArgs };
+        }
+
+        // 2. Parent profile
+        if (toolList.Any(t => t.Name == "get_parent_profile") &&
+            (msg.Contains("my profile") || msg.Contains("parent detail") || msg.Contains("my detail") || msg.Contains("linked children")))
+        {
+            return new LlmDecision { SelectedToolName = "get_parent_profile", Arguments = emptyArgs };
+        }
+
+        // 3. Children attendance
         if (toolList.Any(t => t.Name == "get_my_children_attendance") &&
             (msg.Contains("attendance") || msg.Contains("present") || msg.Contains("absent") || msg.Contains("child") || msg.Contains("how is") || msg.Contains("status")))
         {
             return new LlmDecision { SelectedToolName = "get_my_children_attendance", Arguments = emptyArgs };
         }
 
+        // 4. Submit leave
         if (toolList.Any(t => t.Name == "submit_leave_request") &&
             (msg.Contains("leave") || msg.Contains("sick") || msg.Contains("fever") || msg.Contains("apply leave")))
         {
