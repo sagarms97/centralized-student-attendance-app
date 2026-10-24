@@ -1,4 +1,4 @@
-import { Component, inject, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import { Component, inject, ViewChild, ElementRef, AfterViewChecked, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,8 +7,10 @@ import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatMenuModule } from '@angular/material/menu';
 import { ChatbotService } from '../../core/services/chatbot.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SpeechRecognitionService } from '../../core/services/speech-recognition.service';
 import { ChatbotActionProposal } from '../../core/models/chatbot.models';
 
 @Component({
@@ -22,7 +24,8 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
     MatCardModule,
     MatChipsModule,
     MatProgressSpinnerModule,
-    MatTooltipModule
+    MatTooltipModule,
+    MatMenuModule
   ],
   template: `
     <!-- Floating Action Button (FAB) -->
@@ -114,8 +117,10 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
                             <mat-spinner diameter="16" class="spinner-inline"></mat-spinner>
                             <span>Executing...</span>
                           } @else {
-                            <mat-icon>check_circle</mat-icon>
-                            <span>Confirm & Execute</span>
+                            <ng-container>
+                              <mat-icon>check_circle</mat-icon>
+                              <span>Confirm & Execute</span>
+                            </ng-container>
                           }
                         </button>
 
@@ -172,17 +177,73 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
           </div>
         }
 
+        <!-- Voice Error Notification Banner -->
+        @if (speechService.errorMessage()) {
+          <div class="voice-error-banner">
+            <mat-icon class="banner-icon">error_outline</mat-icon>
+            <span class="banner-text">{{ speechService.errorMessage() }}</span>
+            <button mat-icon-button (click)="speechService.clearError()" class="banner-close" aria-label="Close error">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        }
+
+        <!-- Voice Live Listening Indicator -->
+        @if (speechService.isListening()) {
+          <div class="voice-listening-indicator">
+            <span class="pulse-dot"></span>
+            <span class="listening-text">Listening ({{ getSelectedLanguageLabel() }})... Speak now</span>
+            <button mat-button class="stop-listening-btn" (click)="speechService.stopListening()">Done</button>
+          </div>
+        }
+
         <!-- Chat Input Bar -->
         <div class="chat-input-bar">
+          <!-- Language Selector Pill -->
+          <button
+            mat-button
+            [matMenuTriggerFor]="langMenu"
+            class="lang-select-btn"
+            matTooltip="Speech language (English, Hindi, Kannada)"
+            type="button">
+            <span class="lang-flag">{{ getSelectedLanguageShort() }}</span>
+            <mat-icon class="lang-arrow">arrow_drop_down</mat-icon>
+          </button>
+
+          <mat-menu #langMenu="matMenu" class="voice-lang-menu">
+            @for (lang of speechService.supportedLanguages; track lang.code) {
+              <button mat-menu-item (click)="speechService.setLanguage(lang.code)">
+                <span [class.active-lang]="speechService.selectedLanguage() === lang.code">{{ lang.label }}</span>
+                @if (speechService.selectedLanguage() === lang.code) {
+                  <mat-icon color="primary" class="check-icon">check</mat-icon>
+                }
+              </button>
+            }
+          </mat-menu>
+
           <input
             #messageInput
             type="text"
             [(ngModel)]="userInput"
             (keydown.enter)="onSend()"
-            placeholder="Ask AI or type an action..."
+            placeholder="Ask AI or speak in EN/HI/KN..."
             [disabled]="chatbotService.isLoading()"
             class="chat-input" />
 
+          <!-- Mic Button -->
+          <button
+            mat-icon-button
+            type="button"
+            class="mic-btn"
+            [class.listening]="speechService.isListening()"
+            (click)="onToggleVoice()"
+            [disabled]="chatbotService.isLoading()"
+            [matTooltip]="speechService.isListening() ? 'Stop listening' : 'Voice input (Mic)'"
+            aria-label="Voice input">
+            <mat-icon>{{ speechService.isListening() ? 'mic' : 'mic_none' }}</mat-icon>
+          </button>
+
+          <!-- Send Button -->
           <button
             mat-icon-button
             color="primary"
@@ -524,6 +585,130 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       }
     }
 
+    /* Voice & Language Bar Styles */
+    .voice-error-banner {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: #fef2f2;
+      border-top: 1px solid #fecaca;
+      color: #991b1b;
+      font-size: 11.5px;
+      .banner-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+      .banner-text {
+        flex: 1;
+      }
+      .banner-close {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        mat-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+        }
+      }
+    }
+
+    .voice-listening-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: linear-gradient(90deg, #e0e7ff 0%, #ede9fe 100%);
+      border-top: 1px solid #c7d2fe;
+      color: #3730a3;
+      font-size: 11.5px;
+      font-weight: 500;
+      .listening-text {
+        flex: 1;
+      }
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        background-color: #ef4444;
+        border-radius: 50%;
+        animation: voice-blink 1s infinite alternate;
+      }
+      .stop-listening-btn {
+        height: 22px;
+        line-height: 22px;
+        font-size: 11px;
+        padding: 0 8px;
+        min-width: unset;
+        background: #4f46e5;
+        color: #fff;
+        border-radius: 10px;
+      }
+    }
+    @keyframes voice-blink {
+      0% { opacity: 0.3; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1.2); }
+    }
+
+    .lang-select-btn {
+      min-width: unset;
+      padding: 0 6px;
+      height: 32px;
+      line-height: 32px;
+      border-radius: 16px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #334155;
+      &:hover {
+        background: #e2e8f0;
+      }
+    }
+    .lang-arrow {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+    .active-lang {
+      font-weight: 700;
+      color: #1a237e;
+    }
+    .check-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      margin-left: auto;
+    }
+
+    .mic-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      &:hover {
+        background: #f1f5f9;
+        color: #1a237e;
+      }
+      &.listening {
+        background: #ef4444 !important;
+        color: #ffffff !important;
+        animation: mic-glow 1.5s infinite;
+      }
+    }
+    @keyframes mic-glow {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+      70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
     /* Input Bar */
     .chat-input-bar {
       display: flex;
@@ -555,9 +740,10 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
     }
   `]
 })
-export class AiChatbotComponent implements AfterViewChecked {
+export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
   chatbotService = inject(ChatbotService);
   authService = inject(AuthService);
+  speechService = inject(SpeechRecognitionService);
 
   @ViewChild('scrollContainer') private scrollContainer?: ElementRef;
   @ViewChild('messageInput') private messageInput?: ElementRef;
@@ -566,6 +752,31 @@ export class AiChatbotComponent implements AfterViewChecked {
 
   ngAfterViewChecked(): void {
     this.scrollToBottom();
+  }
+
+  ngOnDestroy(): void {
+    this.speechService.stopListening();
+  }
+
+  onToggleVoice(): void {
+    this.speechService.toggleListening((transcript, isFinal) => {
+      this.userInput = transcript;
+      if (this.messageInput) {
+        this.messageInput.nativeElement.focus();
+      }
+    });
+  }
+
+  getSelectedLanguageShort(): string {
+    const cur = this.speechService.selectedLanguage();
+    const found = this.speechService.supportedLanguages.find(l => l.code === cur);
+    return found ? found.short : 'EN';
+  }
+
+  getSelectedLanguageLabel(): string {
+    const cur = this.speechService.selectedLanguage();
+    const found = this.speechService.supportedLanguages.find(l => l.code === cur);
+    return found ? found.label : 'English';
   }
 
   private scrollToBottom(): void {

@@ -37,3 +37,11 @@ public class ConfirmActionResponse
     public string Message { get; set; } = string.Empty;
     public object? ResultData { get; set; }
 }
+
+public class TranscribeResponse
+{
+    public bool Success { get; set; }
+    public string Transcript { get; set; } = string.Empty;
+    public string Language { get; set; } = "en-IN";
+    public string? Error { get; set; }
+}

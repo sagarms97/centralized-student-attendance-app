@@ -33,6 +33,7 @@ builder.Services.AddScoped<INotificationChannel, WhatsAppNotificationChannel>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddHttpClient("GeminiLlm");
 builder.Services.AddSingleton<IToolRegistry, ToolRegistry>();
+builder.Services.AddSingleton<ISpeechToTextService, SpeechToTextService>();
 builder.Services.AddScoped<ILlmService, LlmService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 

@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudentAttendance.Api.DTOs;
 using StudentAttendance.Api.Services;
+using StudentAttendance.Api.Services.Chatbot;
 
 namespace StudentAttendance.Api.Controllers;
 
@@ -11,10 +13,12 @@ namespace StudentAttendance.Api.Controllers;
 public class ChatbotController : ControllerBase
 {
     private readonly IChatbotService _chatbotService;
+    private readonly ISpeechToTextService _speechToTextService;
 
-    public ChatbotController(IChatbotService chatbotService)
+    public ChatbotController(IChatbotService chatbotService, ISpeechToTextService speechToTextService)
     {
         _chatbotService = chatbotService;
+        _speechToTextService = speechToTextService;
     }
 
     [HttpPost("message")]
@@ -54,5 +58,31 @@ public class ChatbotController : ControllerBase
     {
         var suggestions = _chatbotService.GetSuggestedChips(User);
         return Ok(suggestions);
+    }
+
+    [HttpPost("transcribe")]
+    [RequestSizeLimit(5 * 1024 * 1024)] // 5MB limit
+    public async Task<ActionResult<TranscribeResponse>> TranscribeAudio([FromForm] IFormFile? audio, [FromForm] string language = "en-IN")
+    {
+        if (audio == null || audio.Length == 0)
+        {
+            return BadRequest(new TranscribeResponse { Success = false, Error = "No audio file was uploaded." });
+        }
+
+        if (audio.Length > 5 * 1024 * 1024)
+        {
+            return BadRequest(new TranscribeResponse { Success = false, Error = "Audio file exceeds maximum allowed size of 5MB." });
+        }
+
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous";
+        await using var stream = audio.OpenReadStream();
+        var result = await _speechToTextService.TranscribeAudioAsync(stream, audio.FileName, audio.ContentType, language, userId);
+
+        if (!result.Success)
+        {
+            return BadRequest(new TranscribeResponse { Success = false, Error = result.ErrorMessage });
+        }
+
+        return Ok(new TranscribeResponse { Success = true, Transcript = result.Transcript, Language = result.DetectedLanguage });
     }
 }

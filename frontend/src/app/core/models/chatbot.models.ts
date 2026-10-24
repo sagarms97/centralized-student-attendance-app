@@ -31,6 +31,13 @@ export interface ConfirmActionResponse {
   resultData?: any;
 }
 
+export interface TranscribeResponse {
+  success: boolean;
+  transcript: string;
+  language: string;
+  error?: string;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
