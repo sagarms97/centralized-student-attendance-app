@@ -145,7 +145,8 @@ public class ChatbotService : IChatbotService
                     Reply = toolResult.ResultText,
                     Role = role,
                     Proposal = toolResult.Proposal,
-                    SuggestedChips = chips
+                    SuggestedChips = chips,
+                    ActionData = toolResult.Data
                 };
             }
             catch (Exception ex)

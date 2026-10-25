@@ -22,6 +22,7 @@ public class ChatMessageResponse
     public string Role { get; set; } = string.Empty;
     public ChatbotActionProposal? Proposal { get; set; }
     public List<string> SuggestedChips { get; set; } = new();
+    public object? ActionData { get; set; }
 }
 
 public class ConfirmActionRequest

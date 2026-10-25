@@ -1418,103 +1418,97 @@ public class ToolRegistry : IToolRegistry
         Register(new ChatTool
         {
             Name = "navigate_to_page",
-            Description = "Provides direct navigation links to application screens and menus (Subjects, Timetable, Students, Staff, Attendance, Reports, Approvals, Dashboard, etc.).",
+            Description = "Provides direct navigation links to application screens and menus. Accepts a registered route key (e.g. 'dashboard', 'staff_directory', 'students_and_import', 'parent_directory', 'subjects_setup', 'timetable_setup', 'approvals', 'mark_attendance', 'period_swaps', 'leave_requests', 'reports_and_analytics', 'profile', 'help').",
             AllowedRoles = new[] { Roles.SuperAdmin, Roles.InstituteAdmin, Roles.Staff, Roles.Parent },
             ParametersSchema = new
             {
                 type = "object",
                 properties = new
                 {
-                    destination = new { type = "string", description = "Target menu/screen: 'subjects', 'timetable', 'students', 'staff', 'attendance', 'reports', 'approvals', 'swaps', 'leaves', 'dashboard'" }
+                    routeKey = new { type = "string", description = "The registered route key to navigate to. Never pass a raw URL or free text." }
                 },
-                required = new[] { "destination" }
+                required = new[] { "routeKey" }
             },
             Handler = (user, args, sp) =>
             {
-                string dest = args.TryGetProperty("destination", out var dProp) ? (dProp.GetString() ?? "").ToLowerInvariant().Trim() : "";
+                var routeRegistry = sp.GetRequiredService<IRouteRegistry>();
+                var role = user.FindFirstValue(ClaimTypes.Role) ?? Roles.Staff;
 
-                string pageTitle;
-                string path;
-                string description;
+                // Support routeKey or fallback destination parameter
+                string targetKey = "";
+                if (args.TryGetProperty("routeKey", out var rkProp) && !string.IsNullOrWhiteSpace(rkProp.GetString()))
+                {
+                    targetKey = rkProp.GetString()!.Trim();
+                }
+                else if (args.TryGetProperty("destination", out var dProp) && !string.IsNullOrWhiteSpace(dProp.GetString()))
+                {
+                    targetKey = dProp.GetString()!.Trim();
+                }
 
-                if (dest.Contains("subject"))
+                if (string.IsNullOrWhiteSpace(targetKey))
                 {
-                    pageTitle = "Subjects Management";
-                    path = "/app/subjects";
-                    description = "Manage curriculum subjects, create course codes, and assign department credits.";
+                    return Task.FromResult(new ToolExecutionResult
+                    {
+                        Success = false,
+                        ResultText = "Please provide a valid route key to navigate."
+                    });
                 }
-                else if (dest.Contains("time") || dest.Contains("schedule") || dest.Contains("slot"))
+
+                // Never accept free-text URLs (e.g. raw paths starting with '/' or 'http')
+                if (targetKey.StartsWith("/") || targetKey.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
-                    pageTitle = "Timetable & Schedules";
-                    path = "/app/timetable";
-                    description = "Configure weekly periods, assign faculty to subjects, and view class schedules.";
+                    return Task.FromResult(new ToolExecutionResult
+                    {
+                        Success = false,
+                        ResultText = "Free-text URLs are not permitted. Please use registered menu route keys only."
+                    });
                 }
-                else if (dest.Contains("student"))
+
+                // 1. Look up by exact key
+                var matchedRoute = routeRegistry.FindByKey(targetKey, role);
+
+                // 2. If not found by exact key, try keyword match for this role
+                if (matchedRoute == null)
                 {
-                    pageTitle = "Students Directory";
-                    path = "/app/students";
-                    description = "Manage student enrollments, search student profiles, and import students via Excel.";
+                    matchedRoute = routeRegistry.MatchByKeyword(targetKey, role);
                 }
-                else if (dest.Contains("staff") || dest.Contains("teacher") || dest.Contains("faculty"))
+
+                // 3. Security check: Check if route exists globally but user role lacks permission
+                if (matchedRoute == null)
                 {
-                    pageTitle = "Staff & Faculty Directory";
-                    path = "/app/staff";
-                    description = "Manage faculty profiles, invite new staff members, and view department assignments.";
-                }
-                else if (dest.Contains("attend"))
-                {
-                    pageTitle = "Mark & View Attendance";
-                    path = "/app/attendance";
-                    description = "Take daily attendance for assigned classes and view session attendance registers.";
-                }
-                else if (dest.Contains("report") || dest.Contains("defaulter") || dest.Contains("analytic"))
-                {
-                    pageTitle = "Attendance & Defaulter Reports";
-                    path = "/app/reports";
-                    description = "Review institute attendance percentages and view defaulters below 75%.";
-                }
-                else if (dest.Contains("approv") || dest.Contains("pending"))
-                {
-                    pageTitle = "Account Approvals";
-                    path = "/app/approvals";
-                    description = "Review and approve pending self-registration requests from staff and parents.";
-                }
-                else if (dest.Contains("swap"))
-                {
-                    pageTitle = "Period Swap Requests";
-                    path = "/app/swaps";
-                    description = "Propose and respond to timetable lecture exchanges with colleagues.";
-                }
-                else if (dest.Contains("leave"))
-                {
-                    pageTitle = "Leave Approvals";
-                    path = "/app/leaves";
-                    description = "Review and manage student leave applications submitted by parents.";
-                }
-                else if (dest.Contains("audit") || dest.Contains("log"))
-                {
-                    pageTitle = "Audit Logs";
-                    path = "/app/super-admin/audit-logs";
-                    description = "Inspect immutable audit trails of administrative and security actions.";
-                }
-                else if (dest.Contains("college") || dest.Contains("institute"))
-                {
-                    pageTitle = "College Directory";
-                    path = "/app/super-admin";
-                    description = "Inspect registered institutes and onboard new colleges.";
-                }
-                else
-                {
-                    pageTitle = "Dashboard";
-                    path = "/app/dashboard";
-                    description = "Your central overview dashboard.";
+                    var allRoutes = routeRegistry.GetAllRoutes();
+                    var existingOtherRoleRoute = allRoutes.FirstOrDefault(r =>
+                        string.Equals(r.Key, targetKey, StringComparison.OrdinalIgnoreCase) ||
+                        r.Keywords.Any(k => string.Equals(k, targetKey, StringComparison.OrdinalIgnoreCase)));
+
+                    if (existingOtherRoleRoute != null)
+                    {
+                        return Task.FromResult(new ToolExecutionResult
+                        {
+                            Success = false,
+                            ResultText = $"Security Policy Violation: Your role '{role}' is not authorized to access '{existingOtherRoleRoute.Label}'."
+                        });
+                    }
+
+                    var validKeys = routeRegistry.GetRoutesForRole(role).Select(r => $"• `{r.Key}` ({r.Label})");
+                    return Task.FromResult(new ToolExecutionResult
+                    {
+                        Success = false,
+                        ResultText = $"Unknown navigation target '{targetKey}'. Please select one of the valid screens for your role:\n\n{string.Join("\n", validKeys)}"
+                    });
                 }
 
                 return Task.FromResult(new ToolExecutionResult
                 {
                     Success = true,
-                    ResultText = $"I can take you directly there!\n\n👉 **[{pageTitle}]({path})**\n{description}\n\nTap the link above to open this menu.",
-                    Data = new { pageTitle, path, description }
+                    ResultText = $"I can take you directly there!\n\n👉 **[{matchedRoute.Label}]({matchedRoute.AngularRoute})**\n{matchedRoute.Description}\n\nTap the button or link above to open this menu.",
+                    Data = new
+                    {
+                        type = "navigate",
+                        route = matchedRoute.AngularRoute,
+                        label = matchedRoute.Label,
+                        routeKey = matchedRoute.Key
+                    }
                 });
             }
         });

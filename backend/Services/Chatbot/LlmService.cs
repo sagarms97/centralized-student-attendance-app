@@ -21,12 +21,18 @@ public class LlmService : ILlmService
 {
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRouteRegistry _routeRegistry;
     private readonly ILogger<LlmService> _logger;
 
-    public LlmService(IConfiguration configuration, IHttpClientFactory httpClientFactory, ILogger<LlmService> logger)
+    public LlmService(
+        IConfiguration configuration,
+        IHttpClientFactory httpClientFactory,
+        IRouteRegistry routeRegistry,
+        ILogger<LlmService> logger)
     {
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _routeRegistry = routeRegistry;
         _logger = logger;
     }
 
@@ -170,36 +176,35 @@ public class LlmService : ILlmService
                                msg.Contains("menu for") || msg.Contains("show screen") || msg.Contains("screen for") ||
                                msg.Contains("take me") || msg.Contains("link to");
 
-            // Direct "add timetable" or "create timetable" request
-            if (msg.Contains("timetable") || msg.Contains("time table") || msg.Contains("schedule"))
+            if (isNavIntent)
             {
-                if (msg.Contains("add") || msg.Contains("create") || msg.Contains("setup") || msg.Contains("new") || isNavIntent)
+                // 1. Check if an explicit registered route key was mentioned
+                var allRoutes = _routeRegistry.GetAllRoutes();
+                var explicitKey = allRoutes.FirstOrDefault(r => msg.Contains(r.Key));
+                if (explicitKey != null)
                 {
-                    var jsonArgs = JsonSerializer.Serialize(new { destination = "timetable" });
+                    var jsonArgs = JsonSerializer.Serialize(new { routeKey = explicitKey.Key });
                     using var d = JsonDocument.Parse(jsonArgs);
                     return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
                 }
-            }
 
-            // If user says "go to subject adding" or "go to subjects"
-            if (isNavIntent)
-            {
-                string destination = "dashboard";
-                if (msg.Contains("subject") || msg.Contains("course")) destination = "subjects";
-                else if (msg.Contains("time") || msg.Contains("schedule") || msg.Contains("slot")) destination = "timetable";
-                else if (msg.Contains("student") || msg.Contains("admission") || msg.Contains("pupil")) destination = "students";
-                else if (msg.Contains("staff") || msg.Contains("teacher") || msg.Contains("faculty")) destination = "staff";
-                else if (msg.Contains("attend")) destination = "attendance";
-                else if (msg.Contains("report") || msg.Contains("defaulter")) destination = "reports";
-                else if (msg.Contains("approval")) destination = "approvals";
-                else if (msg.Contains("swap")) destination = "swaps";
-                else if (msg.Contains("leave")) destination = "leaves";
-                else if (msg.Contains("audit") || msg.Contains("log")) destination = "audit_logs";
-                else if (msg.Contains("college") || msg.Contains("institute")) destination = "institutes";
+                // 2. Check for free-text URL attempt (e.g. "navigate to /app/secret" or "navigate to https://...")
+                var urlMatch = Regex.Match(userMessage, @"(?:navigate\s+to|open|go\s+to)\s+([/\w\-:\.]+)", RegexOptions.IgnoreCase);
+                if (urlMatch.Success && (urlMatch.Groups[1].Value.StartsWith("/") || urlMatch.Groups[1].Value.StartsWith("http", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var jsonArgs = JsonSerializer.Serialize(new { routeKey = urlMatch.Groups[1].Value });
+                    using var d = JsonDocument.Parse(jsonArgs);
+                    return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
+                }
 
-                var jsonArgs = JsonSerializer.Serialize(new { destination });
-                using var d = JsonDocument.Parse(jsonArgs);
-                return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
+                // 3. Match by keyword for user's role
+                var matchedRoute = _routeRegistry.MatchByKeyword(userMessage, role);
+                if (matchedRoute != null)
+                {
+                    var jsonArgs = JsonSerializer.Serialize(new { routeKey = matchedRoute.Key });
+                    using var d = JsonDocument.Parse(jsonArgs);
+                    return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
+                }
             }
         }
         #endregion

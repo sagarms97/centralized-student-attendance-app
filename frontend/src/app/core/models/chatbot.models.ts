@@ -17,6 +17,7 @@ export interface ChatMessageResponse {
   role: string;
   proposal?: ChatbotActionProposal;
   suggestedChips: string[];
+  actionData?: any;
 }
 
 export interface ConfirmActionRequest {
@@ -45,6 +46,7 @@ export interface ChatMessage {
   timestamp: Date;
   proposal?: ChatbotActionProposal;
   suggestedChips?: string[];
+  actionData?: any;
   isExecuting?: boolean;
   isConfirmed?: boolean;
   isCancelled?: boolean;
