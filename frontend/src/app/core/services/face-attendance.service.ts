@@ -57,6 +57,84 @@ export interface FaceDataDeletionResult {
   message: string;
 }
 
+export interface EnrollPhotoItem {
+  poseType: 'Front' | 'SlightLeft' | 'SlightRight' | string;
+  imageBase64: string;
+}
+
+export interface EnrollStudentFaceRequest {
+  studentId: number;
+  photos: EnrollPhotoItem[];
+}
+
+export interface FaceEnrollmentResult {
+  studentId: number;
+  studentName: string;
+  successfullyEnrolledCount: number;
+  totalStoredEmbeddings: number;
+  details: string[];
+}
+
+export interface FaceBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface FaceCropMatchRequest {
+  cropIndex: number;
+  photoIndex: number;
+  imageBase64: string;
+  boundingBox?: FaceBoundingBox;
+}
+
+export interface MatchClassAttendanceRequest {
+  classId: number;
+  section?: string;
+  periodId?: number;
+  attendanceDate?: string;
+  faceCrops: FaceCropMatchRequest[];
+}
+
+export interface RecognizedFace {
+  cropIndex: number;
+  photoIndex: number;
+  matchedStudentId?: number;
+  matchedStudentName?: string;
+  rollNumber?: string;
+  section?: string;
+  confidence: number;
+  status: 'Matched' | 'LowConfidence' | 'Unknown';
+  isDuplicate: boolean;
+  boundingBox?: FaceBoundingBox;
+}
+
+export interface NotDetectedStudent {
+  studentId: number;
+  studentName: string;
+  rollNumber: string;
+  section: string;
+  hasConsent: boolean;
+  isEnrolled: boolean;
+}
+
+export interface ClassRecognitionResult {
+  classId: number;
+  className: string;
+  section?: string;
+  totalStudentsInClass: number;
+  consentedStudentsCount: number;
+  enrolledStudentsCount: number;
+  processedPhotosCount: number;
+  totalFacesDetected: number;
+  matchedCount: number;
+  lowConfidenceCount: number;
+  unknownCount: number;
+  recognizedFaces: RecognizedFace[];
+  notDetectedStudents: NotDetectedStudent[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -110,5 +188,23 @@ export class FaceAttendanceService {
 
   cleanupExpired(): Observable<FaceDataDeletionResult> {
     return this.http.post<FaceDataDeletionResult>(`${this.apiUrl}/data/cleanup-expired`, {});
+  }
+
+  // Phase 2: Enrollment
+  enrollStudent(request: EnrollStudentFaceRequest): Observable<FaceEnrollmentResult> {
+    return this.http.post<FaceEnrollmentResult>(`${this.apiUrl}/enrollment`, request);
+  }
+
+  getStudentEnrollment(studentId: number): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/enrollment/student/${studentId}`);
+  }
+
+  deleteEmbedding(embeddingId: number): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/enrollment/embedding/${embeddingId}`);
+  }
+
+  // Phase 4: Recognition
+  matchClassFaces(request: MatchClassAttendanceRequest): Observable<ClassRecognitionResult> {
+    return this.http.post<ClassRecognitionResult>(`${this.apiUrl}/recognition/match-class`, request);
   }
 }

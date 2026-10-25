@@ -39,6 +39,7 @@ builder.Services.AddSingleton<ISpeechToTextService, SpeechToTextService>();
 builder.Services.AddScoped<ILlmService, LlmService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 builder.Services.AddSingleton<IFaceEncryptionService, FaceEncryptionService>();
+builder.Services.AddScoped<IFaceRecognitionService, FaceRecognitionService>();
 
 // CORS
 builder.Services.AddCors(options =>

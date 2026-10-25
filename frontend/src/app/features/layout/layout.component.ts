@@ -176,8 +176,18 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
               </a>
 
               <a mat-list-item routerLink="/app/face-attendance/consent" routerLinkActive="active-link" (click)="closeIfHandset()">
-                <mat-icon matListItemIcon>camera_front</mat-icon>
+                <mat-icon matListItemIcon>how_to_reg</mat-icon>
                 <span matListItemTitle>Face Consent & Roster</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/face-attendance/capture" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>photo_camera_front</mat-icon>
+                <span matListItemTitle>Take Face Attendance</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/face-attendance/enrollment" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>camera_front</mat-icon>
+                <span matListItemTitle>Face Enrollment</span>
               </a>
 
               <a mat-list-item routerLink="/app/swaps" routerLinkActive="active-link" (click)="closeIfHandset()">

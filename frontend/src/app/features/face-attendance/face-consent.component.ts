@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -26,6 +27,7 @@ import {
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     FormsModule,
     MatCardModule,
     MatTableModule,
@@ -186,6 +188,12 @@ import {
                         <mat-icon>check_circle</mat-icon>
                         Record Consent
                       </button>
+
+                      <!-- Enroll Face Biometrics Button -->
+                      <a mat-stroked-button color="primary" size="small" *ngIf="s.status === 'Consented'" [routerLink]="['/app/face-attendance/enrollment']" [queryParams]="{ studentId: s.studentId }">
+                        <mat-icon>camera_front</mat-icon>
+                        Enroll Face
+                      </a>
 
                       <!-- Withdraw Consent Button -->
                       <button mat-button color="warn" size="small" *ngIf="s.status === 'Consented'" (click)="openWithdrawModal(s)">

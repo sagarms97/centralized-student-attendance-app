@@ -22,6 +22,7 @@
     "@angular/pwa": "^18.2.21",
     "@angular/router": "^18.2.0",
     "@angular/service-worker": "^18.2.14",
+    "@mediapipe/tasks-vision": "^1.1.1",
     "chart.js": "^4.5.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
