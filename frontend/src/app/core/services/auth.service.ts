@@ -26,6 +26,7 @@ export class AuthService {
     const role = this.currentUser()?.role;
     return role === 'InstituteAdmin' || role === 'SuperAdmin';
   });
+  isInstituteAdmin = computed(() => this.currentUser()?.role === 'InstituteAdmin');
   isStaff = computed(() => this.currentUser()?.role === 'Staff');
   isParent = computed(() => this.currentUser()?.role === 'Parent');
   isSuperAdmin = computed(() => this.currentUser()?.role === 'SuperAdmin');

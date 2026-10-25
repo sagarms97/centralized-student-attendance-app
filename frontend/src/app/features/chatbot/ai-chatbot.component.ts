@@ -435,6 +435,7 @@ import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/c
       flex: 1;
       padding: 16px;
       overflow-y: auto;
+      overflow-x: hidden;
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -444,6 +445,7 @@ import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/c
       display: flex;
       align-items: flex-start;
       gap: 8px;
+      width: 100%;
       &.user-row { justify-content: flex-end; }
       &.bot-row { justify-content: flex-start; }
     }
@@ -460,7 +462,7 @@ import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/c
       mat-icon { font-size: 16px; width: 16px; height: 16px; }
     }
     .message-bubble {
-      max-width: 82%;
+      max-width: 85%;
       padding: 10px 14px;
       border-radius: 14px;
       position: relative;
@@ -468,6 +470,7 @@ import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/c
       line-height: 1.5;
       word-break: break-word;
       overflow-wrap: break-word;
+      box-sizing: border-box;
     }
     .user-bubble {
       background: #1a237e;
@@ -691,27 +694,31 @@ import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/c
       display: flex;
       gap: 6px;
       overflow-x: auto;
+      overflow-y: hidden;
       padding: 8px 12px;
       background: #ffffff;
       border-top: 1px solid #e2e8f0;
       white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       &::-webkit-scrollbar { height: 4px; }
       &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     }
     .suggestion-chip {
-      flex-shrink: 0;
+      flex: 0 0 auto;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
       color: #1d4ed8;
       font-size: 11.5px;
       font-weight: 500;
-      padding: 5px 10px;
+      padding: 5px 12px;
       border-radius: 14px;
       cursor: pointer;
-      transition: background 0.15s;
+      white-space: nowrap;
+      transition: all 0.15s ease-in-out;
       &:hover {
         background: #dbeafe;
+        border-color: #93c5fd;
       }
     }
 

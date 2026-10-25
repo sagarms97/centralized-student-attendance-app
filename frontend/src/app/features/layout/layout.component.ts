@@ -118,7 +118,7 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
             }
 
             <!-- Institute Admin Menu -->
-            @if (authService.isAdmin()) {
+            @if (authService.isInstituteAdmin()) {
               <div class="nav-section-label">ADMINISTRATION</div>
 
               <a mat-list-item routerLink="/app/staff" routerLinkActive="active-link" (click)="closeIfHandset()">
@@ -155,8 +155,15 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
             }
 
             <!-- Staff & Admin Operations -->
-            @if (authService.isStaff() || authService.isAdmin()) {
+            @if (authService.isStaff() || authService.isInstituteAdmin()) {
               <div class="nav-section-label">ATTENDANCE & OPERATIONS</div>
+
+              @if (authService.isStaff()) {
+                <a mat-list-item routerLink="/app/timetable" routerLinkActive="active-link" (click)="closeIfHandset()">
+                  <mat-icon matListItemIcon>calendar_month</mat-icon>
+                  <span matListItemTitle>Timetable Schedule</span>
+                </a>
+              }
 
               <a mat-list-item routerLink="/app/attendance" routerLinkActive="active-link" (click)="closeIfHandset()">
                 <mat-icon matListItemIcon>fact_check</mat-icon>
@@ -225,7 +232,7 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
             </a>
           }
 
-          @if (authService.isAdmin()) {
+          @if (authService.isInstituteAdmin()) {
             <a routerLink="/app/students" routerLinkActive="active-bottom" class="bottom-nav-item">
               <mat-icon>groups</mat-icon>
               <span>Students</span>
@@ -327,10 +334,39 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
       height: calc(100vh - 64px);
     }
     .app-sidenav {
-      width: 250px;
+      width: 260px;
       background-color: #ffffff;
       border-right: 1px solid #e2e8f0;
       padding-top: 12px;
+      padding-bottom: 24px;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      box-sizing: border-box;
+    }
+    .mat-nav-list {
+      padding-top: 0 !important;
+      padding-bottom: 16px !important;
+    }
+    .mat-mdc-list-item {
+      overflow: visible !important;
+      margin-bottom: 2px;
+      border-radius: 8px;
+      margin-left: 8px;
+      margin-right: 8px;
+      width: calc(100% - 16px);
+      box-sizing: border-box;
+      transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+    }
+    mat-icon[matListItemIcon] {
+      font-size: 22px !important;
+      width: 22px !important;
+      height: 22px !important;
+      line-height: 22px !important;
+      margin-right: 12px !important;
+      overflow: visible !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
     .nav-section-label {
       padding: 16px 16px 6px;

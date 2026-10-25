@@ -30,6 +30,43 @@ html, body {
   box-sizing: border-box;
 }
 
+/* Global Material Icons & Ligature Normalization (fixes clipped/half symbols) */
+.material-icons,
+.material-icons-outlined,
+mat-icon {
+  font-family: 'Material Icons' !important;
+  font-weight: normal;
+  font-style: normal;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  overflow: visible !important;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'liga';
+}
+
+.mat-mdc-list-item-icon {
+  overflow: visible !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.mat-badge-content {
+  overflow: visible !important;
+  font-family: Roboto, sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
 .spacer {
   flex: 1 1 auto;
 }
