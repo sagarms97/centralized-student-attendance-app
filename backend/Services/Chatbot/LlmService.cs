@@ -77,34 +77,41 @@ public class LlmService : ILlmService
         var clean = (userMessage ?? "").Trim();
         if (string.IsNullOrWhiteSpace(clean)) return null;
 
-        var words = clean.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-        // Short message check: typically 1 to 3 words (e.g. "Reports", "Leave requests", "Attendance", "Staff", "Timetable")
-        bool isShort = words.Length <= 3;
-
         bool isExplicitNav = clean.StartsWith("go to", StringComparison.OrdinalIgnoreCase) ||
                              clean.StartsWith("take me to", StringComparison.OrdinalIgnoreCase) ||
                              clean.StartsWith("open ", StringComparison.OrdinalIgnoreCase) ||
                              clean.StartsWith("navigate to", StringComparison.OrdinalIgnoreCase);
 
-        if (isShort || isExplicitNav)
+        AppRouteEntry? matchedRoute = null;
+        if (isExplicitNav)
         {
-            var matchedRoute = _routeRegistry.MatchByKeyword(clean, role);
-            if (matchedRoute != null)
+            matchedRoute = _routeRegistry.MatchByKeyword(clean, role);
+        }
+        else
+        {
+            var allowed = _routeRegistry.GetRoutesForRole(role);
+            var cleanLower = clean.ToLowerInvariant();
+            matchedRoute = allowed.FirstOrDefault(r =>
+                string.Equals(r.Key, cleanLower, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Label, cleanLower, StringComparison.OrdinalIgnoreCase) ||
+                r.Keywords.Any(k => string.Equals(k, cleanLower, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (matchedRoute != null)
+        {
+            var suggestions = _routeRegistry.GetSuggestionsForRoute(matchedRoute, role);
+            return new LlmDecision
             {
-                var suggestions = _routeRegistry.GetSuggestionsForRoute(matchedRoute, role);
-                return new LlmDecision
+                DirectReply = $"Here is **[{matchedRoute.Label}]({matchedRoute.AngularRoute})**.\n{matchedRoute.Description}\n\nTap below to open the page or choose a related question:",
+                ActionData = new
                 {
-                    DirectReply = $"Here is **[{matchedRoute.Label}]({matchedRoute.AngularRoute})**.\n{matchedRoute.Description}\n\nTap below to open the page or choose a related question:",
-                    ActionData = new
-                    {
-                        type = "navigate",
-                        route = matchedRoute.AngularRoute,
-                        label = matchedRoute.Label,
-                        routeKey = matchedRoute.Key
-                    },
-                    Suggestions = suggestions
-                };
-            }
+                    type = "navigate",
+                    route = matchedRoute.AngularRoute,
+                    label = matchedRoute.Label,
+                    routeKey = matchedRoute.Key
+                },
+                Suggestions = suggestions
+            };
         }
 
         return null;
@@ -257,6 +264,55 @@ public class LlmService : ILlmService
                     return new LlmDecision { SelectedToolName = "navigate_to_page", Arguments = d.RootElement.Clone() };
                 }
             }
+        }
+        #endregion
+
+        #region Shared Data Tools Semantic Routing (Phase 3)
+        // 1. Pending Leave Requests
+        if (toolList.Any(t => t.Name == "get_pending_leave_requests") &&
+            (msg.Contains("pending leave") || msg.Contains("leave requests") || msg.Contains("who applied for leave") || msg.Contains("pending absence") || msg.Contains("show pending leave") || msg.Contains("leave applications") || msg.Contains("pending leaves")) &&
+            !msg.Contains("apply leave") && !msg.Contains("request leave"))
+        {
+            return new LlmDecision { SelectedToolName = "get_pending_leave_requests", Arguments = emptyArgs };
+        }
+
+        // 2. Leave Request Summary
+        if (toolList.Any(t => t.Name == "get_leave_request_summary") &&
+            (msg.Contains("leave summary") || msg.Contains("leave request summary") || msg.Contains("how many on leave") || msg.Contains("leave statistics") || msg.Contains("leave stats") || msg.Contains("absence summary")))
+        {
+            return new LlmDecision { SelectedToolName = "get_leave_request_summary", Arguments = emptyArgs };
+        }
+
+        // 3. Attendance Analytics & Report Summary
+        if (toolList.Any(t => t.Name == "get_attendance_report_summary") &&
+            (msg.Contains("attendance report") || msg.Contains("attendance analytics") || msg.Contains("attendance percentage report") || msg.Contains("monthly attendance") || msg.Contains("weekly attendance") || msg.Contains("attendance trend") || (msg.Contains("attendance") && (msg.Contains("report") || msg.Contains("analytics") || msg.Contains("breakdown") || msg.Contains("range")))))
+        {
+            string? className = null;
+            string? section = null;
+
+            var classMatch = Regex.Match(userMessage, @"(?:class|grade)\s+([A-Za-z0-9\s]+?)(?:\s+section|\s+sec|\s+for|$)", RegexOptions.IgnoreCase);
+            if (classMatch.Success && !string.IsNullOrWhiteSpace(classMatch.Groups[1].Value))
+            {
+                className = classMatch.Groups[1].Value.Trim();
+            }
+
+            var secMatch = Regex.Match(userMessage, @"(?:section|sec)\s+([A-Za-z0-9])", RegexOptions.IgnoreCase);
+            if (secMatch.Success && !string.IsNullOrWhiteSpace(secMatch.Groups[1].Value))
+            {
+                section = secMatch.Groups[1].Value.Trim().ToUpperInvariant();
+            }
+
+            var jsonArgs = JsonSerializer.Serialize(new { className, section });
+            using var d = JsonDocument.Parse(jsonArgs);
+            return new LlmDecision { SelectedToolName = "get_attendance_report_summary", Arguments = d.RootElement.Clone() };
+        }
+
+        // 4. Pending Period Swaps
+        if (toolList.Any(t => t.Name == "get_pending_period_swaps") &&
+            (msg.Contains("pending swap") || msg.Contains("swap requests") || msg.Contains("period swaps") || msg.Contains("pending period swap") || msg.Contains("show swaps") || msg.Contains("substitution requests")) &&
+            !msg.Contains("request swap") && !msg.Contains("with teacher") && !msg.Contains("for period"))
+        {
+            return new LlmDecision { SelectedToolName = "get_pending_period_swaps", Arguments = emptyArgs };
         }
         #endregion
 

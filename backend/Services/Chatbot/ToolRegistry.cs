@@ -26,6 +26,7 @@ public class ToolRegistry : IToolRegistry
         RegisterInstituteAdminTools();
         RegisterStaffTools();
         RegisterParentTools();
+        RegisterSharedDataTools();
     }
 
     public void Register(ChatTool tool)
@@ -1511,6 +1512,471 @@ public class ToolRegistry : IToolRegistry
                     },
                     Suggestions = routeRegistry.GetSuggestionsForRoute(matchedRoute, role)
                 });
+            }
+        });
+    }
+    #endregion
+
+    #region Shared Role-Scoped Data Tools (Phase 3)
+    private void RegisterSharedDataTools()
+    {
+        // 1. Pending Leave Requests
+        Register(new ChatTool
+        {
+            Name = "get_pending_leave_requests",
+            Description = "Retrieves pending student leave applications and absence requests requiring review or submitted by the user. Supports pagination.",
+            AllowedRoles = new[] { Roles.InstituteAdmin, Roles.Staff, Roles.Parent },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    page = new { type = "integer", description = "Page number (default 1)." },
+                    pageSize = new { type = "integer", description = "Page size (default 5, max 20)." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var routeRegistry = sp.GetRequiredService<IRouteRegistry>();
+                var role = user.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                int.TryParse(userIdStr, out var userId);
+                var instIdClaim = user.FindFirstValue("institute_id");
+                int.TryParse(instIdClaim, out var instId);
+
+                int page = 1;
+                if (args.TryGetProperty("page", out var pProp) && pProp.TryGetInt32(out var pVal) && pVal > 0) page = pVal;
+                int pageSize = 5;
+                if (args.TryGetProperty("pageSize", out var psProp) && psProp.TryGetInt32(out var psVal) && psVal > 0) pageSize = Math.Clamp(psVal, 1, 20);
+
+                IQueryable<LeaveRequest> query = db.LeaveRequests
+                    .Include(l => l.Student).ThenInclude(s => s.Class)
+                    .Include(l => l.Parent)
+                    .Where(l => l.Status == LeaveStatus.Pending && l.IsActive);
+
+                if (string.Equals(role, Roles.InstituteAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (instId <= 0) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve your institute ID from security claims." };
+                    query = query.Where(l => l.InstituteId == instId);
+                }
+                else if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (instId <= 0) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve your institute ID from security claims." };
+                    var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.InstituteId == instId && s.IsActive);
+                    if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                    var assignedClasses = await db.TimetableEntries
+                        .Where(t => t.StaffId == staff.Id && t.InstituteId == instId && t.IsActive)
+                        .Select(t => new { t.ClassId, t.Section })
+                        .Distinct()
+                        .ToListAsync();
+
+                    var assignedClassIds = assignedClasses.Select(c => c.ClassId).Distinct().ToList();
+                    var assignedSections = assignedClasses.Select(c => c.Section).Distinct().ToList();
+
+                    query = query.Where(l => l.InstituteId == instId && assignedClassIds.Contains(l.Student.ClassId) && assignedSections.Contains(l.Student.Section));
+                }
+                else if (string.Equals(role, Roles.Parent, StringComparison.OrdinalIgnoreCase))
+                {
+                    var parent = await db.Parents.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
+                    if (parent == null) return new ToolExecutionResult { Success = false, ResultText = "Parent profile not found." };
+                    query = query.Where(l => l.ParentId == parent.Id);
+                }
+                else
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = "Your role is not authorized to access leave requests." };
+                }
+
+                var totalCount = await query.CountAsync();
+                var leaveRoute = routeRegistry.FindByKey("leave_requests", role);
+                var suggestions = leaveRoute != null ? routeRegistry.GetSuggestionsForRoute(leaveRoute, role) : null;
+
+                if (totalCount == 0)
+                {
+                    return new ToolExecutionResult
+                    {
+                        ResultText = "There are no pending leave requests at this time.\n\n[Open Leave Requests](/app/leaves)",
+                        Suggestions = suggestions
+                    };
+                }
+
+                var items = await query
+                    .OrderByDescending(l => l.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var lines = items.Select((l, idx) =>
+                {
+                    int days = (l.EndDate.ToDateTime(TimeOnly.MinValue) - l.StartDate.ToDateTime(TimeOnly.MinValue)).Days + 1;
+                    string dateStr = l.StartDate == l.EndDate ? $"{l.StartDate:MMM dd, yyyy}" : $"{l.StartDate:MMM dd} - {l.EndDate:MMM dd, yyyy}";
+                    return $"**{(page - 1) * pageSize + idx + 1}. {l.Student.FullName}** (Roll: `{l.Student.RollNo}`, {l.Student.Class.Name}-{l.Student.Section})\n" +
+                           $"   • **Dates**: {dateStr} ({days} {(days == 1 ? "day" : "days")})\n" +
+                           $"   • **Reason**: {l.Reason}\n" +
+                           $"   • **Parent**: {l.Parent?.FullName ?? "N/A"}";
+                });
+
+                int displayedSoFar = (page - 1) * pageSize + items.Count;
+                string paginationText = totalCount > displayedSoFar
+                    ? $"\n\n*Showing {displayedSoFar} of {totalCount} pending requests.*"
+                    : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 📋 Pending Leave Requests ({totalCount})\n\n" +
+                                 string.Join("\n\n", lines) +
+                                 paginationText +
+                                 $"\n\n[Open Full Leave Management Screen](/app/leaves)",
+                    Data = new
+                    {
+                        totalCount,
+                        page,
+                        pageSize,
+                        items = items.Select(l => new { l.Id, StudentName = l.Student.FullName, RollNo = l.Student.RollNo, l.StartDate, l.EndDate, l.Reason, l.Status })
+                    },
+                    Suggestions = suggestions
+                };
+            }
+        });
+
+        // 2. Leave Request Summary
+        Register(new ChatTool
+        {
+            Name = "get_leave_request_summary",
+            Description = "Retrieves an aggregated summary and analytics of leave requests (pending, approved, rejected, currently on leave).",
+            AllowedRoles = new[] { Roles.InstituteAdmin, Roles.Staff, Roles.Parent },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    days = new { type = "integer", description = "Lookback window in days (default 30)." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var routeRegistry = sp.GetRequiredService<IRouteRegistry>();
+                var role = user.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                int.TryParse(userIdStr, out var userId);
+                var instIdClaim = user.FindFirstValue("institute_id");
+                int.TryParse(instIdClaim, out var instId);
+
+                int lookbackDays = 30;
+                if (args.TryGetProperty("days", out var dProp) && dProp.TryGetInt32(out var dVal) && dVal > 0)
+                {
+                    lookbackDays = Math.Clamp(dVal, 1, 365);
+                }
+
+                var cutoffDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-lookbackDays));
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+                IQueryable<LeaveRequest> query = db.LeaveRequests
+                    .Include(l => l.Student).ThenInclude(s => s.Class)
+                    .Where(l => l.IsActive && l.StartDate >= cutoffDate);
+
+                if (string.Equals(role, Roles.InstituteAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (instId <= 0) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
+                    query = query.Where(l => l.InstituteId == instId);
+                }
+                else if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (instId <= 0) return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
+                    var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.InstituteId == instId && s.IsActive);
+                    if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                    var assignedClasses = await db.TimetableEntries
+                        .Where(t => t.StaffId == staff.Id && t.InstituteId == instId && t.IsActive)
+                        .Select(t => new { t.ClassId, t.Section })
+                        .Distinct()
+                        .ToListAsync();
+
+                    var assignedClassIds = assignedClasses.Select(c => c.ClassId).Distinct().ToList();
+                    var assignedSections = assignedClasses.Select(c => c.Section).Distinct().ToList();
+
+                    query = query.Where(l => l.InstituteId == instId && assignedClassIds.Contains(l.Student.ClassId) && assignedSections.Contains(l.Student.Section));
+                }
+                else if (string.Equals(role, Roles.Parent, StringComparison.OrdinalIgnoreCase))
+                {
+                    var parent = await db.Parents.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
+                    if (parent == null) return new ToolExecutionResult { Success = false, ResultText = "Parent profile not found." };
+                    query = query.Where(l => l.ParentId == parent.Id);
+                }
+
+                var list = await query.ToListAsync();
+                var pendingCount = list.Count(l => l.Status == LeaveStatus.Pending);
+                var approvedCount = list.Count(l => l.Status == LeaveStatus.Approved);
+                var rejectedCount = list.Count(l => l.Status == LeaveStatus.Rejected);
+                var onLeaveToday = list.Count(l => l.Status == LeaveStatus.Approved && l.StartDate <= today && l.EndDate >= today);
+
+                var leaveRoute = routeRegistry.FindByKey("leave_requests", role);
+                var suggestions = leaveRoute != null ? routeRegistry.GetSuggestionsForRoute(leaveRoute, role) : null;
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"**Leave Requests Summary (Past {lookbackDays} Days)**:\n\n" +
+                                 $"• **Total Applications**: {list.Count}\n" +
+                                 $"• **⏳ Pending Review**: {pendingCount}\n" +
+                                 $"• **✅ Approved**: {approvedCount}\n" +
+                                 $"• **❌ Rejected**: {rejectedCount}\n" +
+                                 $"• **🏖️ Currently On Leave Today**: {onLeaveToday} students\n\n" +
+                                 $"[Open Leave Management Screen](/app/leaves)",
+                    Data = new
+                    {
+                        total = list.Count,
+                        pendingCount,
+                        approvedCount,
+                        rejectedCount,
+                        onLeaveToday,
+                        lookbackDays
+                    },
+                    Suggestions = suggestions
+                };
+            }
+        });
+
+        // 3. Attendance Report Summary
+        Register(new ChatTool
+        {
+            Name = "get_attendance_report_summary",
+            Description = "Generates aggregated attendance percentage reports and statistics by date range and optional class/section filter. Includes defaulter counts and section breakdowns.",
+            AllowedRoles = new[] { Roles.InstituteAdmin, Roles.Staff },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    startDate = new { type = "string", description = "Start date in YYYY-MM-DD format (default: 30 days ago)." },
+                    endDate = new { type = "string", description = "End date in YYYY-MM-DD format (default: today)." },
+                    className = new { type = "string", description = "Optional class grade name to filter (e.g. 'Class 10', 'Grade 9')." },
+                    section = new { type = "string", description = "Optional section filter (e.g. 'A', 'B')." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var routeRegistry = sp.GetRequiredService<IRouteRegistry>();
+                var role = user.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                int.TryParse(userIdStr, out var userId);
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId))
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
+                }
+
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                DateOnly start = today.AddDays(-30);
+                DateOnly end = today;
+
+                if (args.TryGetProperty("startDate", out var sProp) && DateOnly.TryParse(sProp.GetString(), out var parsedStart))
+                {
+                    start = parsedStart;
+                }
+                if (args.TryGetProperty("endDate", out var eProp) && DateOnly.TryParse(eProp.GetString(), out var parsedEnd))
+                {
+                    end = parsedEnd;
+                }
+                if (start > end)
+                {
+                    var temp = start;
+                    start = end;
+                    end = temp;
+                }
+
+                string filterClass = args.TryGetProperty("className", out var cnProp) ? cnProp.GetString()?.Trim() ?? "" : "";
+                string filterSection = args.TryGetProperty("section", out var secProp) ? secProp.GetString()?.Trim() ?? "" : "";
+
+                IQueryable<AttendanceRecord> query = db.AttendanceRecords
+                    .Include(a => a.Student).ThenInclude(s => s.Class)
+                    .Where(a => a.InstituteId == instId && a.IsActive && a.Date >= start && a.Date <= end);
+
+                if (!string.IsNullOrWhiteSpace(filterClass))
+                {
+                    query = query.Where(a => a.Student.Class.Name.ToLower().Contains(filterClass.ToLower()));
+                }
+                if (!string.IsNullOrWhiteSpace(filterSection))
+                {
+                    query = query.Where(a => a.Student.Section.ToLower() == filterSection.ToLower());
+                }
+
+                if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.InstituteId == instId && s.IsActive);
+                    if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+
+                    var assignedClasses = await db.TimetableEntries
+                        .Where(t => t.StaffId == staff.Id && t.InstituteId == instId && t.IsActive)
+                        .Select(t => new { t.ClassId, t.Section })
+                        .Distinct()
+                        .ToListAsync();
+
+                    var assignedClassIds = assignedClasses.Select(c => c.ClassId).Distinct().ToList();
+                    var assignedSections = assignedClasses.Select(c => c.Section).Distinct().ToList();
+
+                    query = query.Where(a => assignedClassIds.Contains(a.Student.ClassId) && assignedSections.Contains(a.Student.Section));
+                }
+
+                var records = await query.ToListAsync();
+                var reportRoute = routeRegistry.FindByKey("reports_and_analytics", role);
+                var suggestions = reportRoute != null ? routeRegistry.GetSuggestionsForRoute(reportRoute, role) : null;
+
+                if (records.Count == 0)
+                {
+                    return new ToolExecutionResult
+                    {
+                        ResultText = $"No attendance records found for the period **{start:MMM dd, yyyy}** to **{end:MMM dd, yyyy}**" +
+                                     (!string.IsNullOrEmpty(filterClass) ? $" for class '{filterClass}'" : "") + ".\n\n[Open Reports & Analytics](/app/reports)",
+                        Suggestions = suggestions
+                    };
+                }
+
+                var present = records.Count(r => r.Status == AttendanceStatus.Present);
+                var absent = records.Count(r => r.Status == AttendanceStatus.Absent);
+                var late = records.Count(r => r.Status == AttendanceStatus.Late);
+                var leave = records.Count(r => r.Status == AttendanceStatus.OnLeave);
+                double overallPct = Math.Round((present + (late * 0.5) + leave) / (double)records.Count * 100, 1);
+
+                var classGroups = records
+                    .GroupBy(r => $"{r.Student.Class.Name} - Section {r.Student.Section}")
+                    .OrderBy(g => g.Key)
+                    .Take(5)
+                    .Select(g =>
+                    {
+                        var gp = g.Count(r => r.Status == AttendanceStatus.Present);
+                        var gl = g.Count(r => r.Status == AttendanceStatus.Late);
+                        var glv = g.Count(r => r.Status == AttendanceStatus.OnLeave);
+                        double gPct = Math.Round((gp + (gl * 0.5) + glv) / (double)g.Count() * 100, 1);
+                        return $"• **{g.Key}**: `{gPct}%` ({g.Count()} records)";
+                    });
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 📊 Attendance Analytics Report\n" +
+                                 $"**Period**: `{start:MMM dd, yyyy}` to `{end:MMM dd, yyyy}`\n\n" +
+                                 $"• **Overall Attendance**: `{overallPct}%`\n" +
+                                 $"• **Total Session Entries**: {records.Count}\n" +
+                                 $"• **Present**: {present} | **Absent**: {absent} | **Late**: {late} | **On Leave**: {leave}\n\n" +
+                                 $"**Class & Section Breakdown**:\n" + string.Join("\n", classGroups) +
+                                 $"\n\n[Open Full Reports & Analytics](/app/reports)",
+                    Data = new
+                    {
+                        startDate = start,
+                        endDate = end,
+                        overallPct,
+                        totalRecords = records.Count,
+                        present,
+                        absent,
+                        late,
+                        leave
+                    },
+                    Suggestions = suggestions
+                };
+            }
+        });
+
+        // 4. Pending Period Swaps
+        Register(new ChatTool
+        {
+            Name = "get_pending_period_swaps",
+            Description = "Retrieves pending timetable period swap exchange proposals requiring review or response. Supports pagination.",
+            AllowedRoles = new[] { Roles.InstituteAdmin, Roles.Staff },
+            ParametersSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    page = new { type = "integer", description = "Page number (default 1)." },
+                    pageSize = new { type = "integer", description = "Page size (default 5, max 20)." }
+                }
+            },
+            Handler = async (user, args, sp) =>
+            {
+                var db = sp.GetRequiredService<ApplicationDbContext>();
+                var routeRegistry = sp.GetRequiredService<IRouteRegistry>();
+                var role = user.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var userIdStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                int.TryParse(userIdStr, out var userId);
+                var instIdClaim = user.FindFirstValue("institute_id");
+                if (!int.TryParse(instIdClaim, out var instId))
+                {
+                    return new ToolExecutionResult { Success = false, ResultText = "Could not resolve institute from credentials." };
+                }
+
+                int page = 1;
+                if (args.TryGetProperty("page", out var pProp) && pProp.TryGetInt32(out var pVal) && pVal > 0) page = pVal;
+                int pageSize = 5;
+                if (args.TryGetProperty("pageSize", out var psProp) && psProp.TryGetInt32(out var psVal) && psVal > 0) pageSize = Math.Clamp(psVal, 1, 20);
+
+                IQueryable<PeriodSwapRequest> query = db.PeriodSwapRequests
+                    .Include(s => s.RequesterStaff)
+                    .Include(s => s.TargetStaff)
+                    .Include(s => s.TimetableEntry).ThenInclude(t => t.Subject)
+                    .Include(s => s.TimetableEntry).ThenInclude(t => t.Class)
+                    .Include(s => s.TimetableEntry).ThenInclude(t => t.Period)
+                    .Where(s => s.InstituteId == instId && s.Status == SwapStatus.Pending && s.IsActive);
+
+                if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.UserId == userId && s.InstituteId == instId && s.IsActive);
+                    if (staff == null) return new ToolExecutionResult { Success = false, ResultText = "Staff profile not found." };
+                    query = query.Where(s => s.RequesterStaffId == staff.Id || s.TargetStaffId == staff.Id);
+                }
+
+                var totalCount = await query.CountAsync();
+                var swapRoute = routeRegistry.FindByKey("period_swaps", role);
+                var suggestions = swapRoute != null ? routeRegistry.GetSuggestionsForRoute(swapRoute, role) : null;
+
+                if (totalCount == 0)
+                {
+                    return new ToolExecutionResult
+                    {
+                        ResultText = "No pending period swap requests at this time.\n\n[Open Period Swaps](/app/swaps)",
+                        Suggestions = suggestions
+                    };
+                }
+
+                var items = await query
+                    .OrderByDescending(s => s.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var lines = items.Select((s, idx) =>
+                {
+                    string subj = s.TimetableEntry?.Subject?.Name ?? "Lecture";
+                    string cls = s.TimetableEntry?.Class != null ? $"{s.TimetableEntry.Class.Name}-{s.TimetableEntry.Section}" : "Class";
+                    string periodName = s.TimetableEntry?.Period?.Name ?? "Period";
+                    return $"**{(page - 1) * pageSize + idx + 1}. {subj} ({cls}, {periodName})**\n" +
+                           $"   • **Requested By**: {s.RequesterStaff?.FullName ?? "Staff"}\n" +
+                           $"   • **Target Faculty**: {s.TargetStaff?.FullName ?? "Staff"}\n" +
+                           $"   • **Date**: {s.SwapDate:MMM dd, yyyy}\n" +
+                           $"   • **Reason**: {s.Reason ?? "Not specified"}";
+                });
+
+                int displayedSoFar = (page - 1) * pageSize + items.Count;
+                string paginationText = totalCount > displayedSoFar
+                    ? $"\n\n*Showing {displayedSoFar} of {totalCount} pending swaps.*"
+                    : "";
+
+                return new ToolExecutionResult
+                {
+                    ResultText = $"### 🔄 Pending Period Swaps ({totalCount})\n\n" +
+                                 string.Join("\n\n", lines) +
+                                 paginationText +
+                                 $"\n\n[Open Period Swaps Management](/app/swaps)",
+                    Data = new
+                    {
+                        totalCount,
+                        page,
+                        pageSize,
+                        items = items.Select(s => new { s.Id, s.SwapDate, Requester = s.RequesterStaff?.FullName, Target = s.TargetStaff?.FullName, s.Status })
+                    },
+                    Suggestions = suggestions
+                };
             }
         });
     }
