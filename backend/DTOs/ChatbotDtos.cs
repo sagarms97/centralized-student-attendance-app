@@ -16,6 +16,15 @@ public class ChatbotActionProposal
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(10);
 }
 
+public class ChatSuggestionOption
+{
+    public string Label { get; set; } = string.Empty;
+    public string Action { get; set; } = "send_message"; // "navigate" or "send_message"
+    public string? Route { get; set; }
+    public string? Query { get; set; }
+    public string? RouteKey { get; set; }
+}
+
 public class ChatMessageResponse
 {
     public string Reply { get; set; } = string.Empty;
@@ -23,6 +32,7 @@ public class ChatMessageResponse
     public ChatbotActionProposal? Proposal { get; set; }
     public List<string> SuggestedChips { get; set; } = new();
     public object? ActionData { get; set; }
+    public List<ChatSuggestionOption>? Suggestions { get; set; }
 }
 
 public class ConfirmActionRequest

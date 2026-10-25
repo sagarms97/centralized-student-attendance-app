@@ -12,12 +12,21 @@ export interface ChatMessageRequest {
   message: string;
 }
 
+export interface ChatSuggestionOption {
+  label: string;
+  action: 'navigate' | 'send_message';
+  route?: string;
+  query?: string;
+  routeKey?: string;
+}
+
 export interface ChatMessageResponse {
   reply: string;
   role: string;
   proposal?: ChatbotActionProposal;
   suggestedChips: string[];
   actionData?: any;
+  suggestions?: ChatSuggestionOption[];
 }
 
 export interface ConfirmActionRequest {
@@ -47,6 +56,7 @@ export interface ChatMessage {
   proposal?: ChatbotActionProposal;
   suggestedChips?: string[];
   actionData?: any;
+  suggestions?: ChatSuggestionOption[];
   isExecuting?: boolean;
   isConfirmed?: boolean;
   isCancelled?: boolean;

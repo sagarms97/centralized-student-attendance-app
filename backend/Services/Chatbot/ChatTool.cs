@@ -11,6 +11,7 @@ public class ToolExecutionResult
     public object? Data { get; set; }
     public bool IsProposal { get; set; } = false;
     public ChatbotActionProposal? Proposal { get; set; }
+    public List<ChatSuggestionOption>? Suggestions { get; set; }
 }
 
 public class ChatTool

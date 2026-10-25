@@ -37,6 +37,31 @@ public class ChatbotService : IChatbotService
         _logger = logger;
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<DateTime>> _userRequestTimes = new();
+    private const int RateLimitPerMinute = 40;
+
+    private static bool CheckRateLimit(string key)
+    {
+        var now = DateTime.UtcNow;
+        var window = now.AddMinutes(-1);
+        var times = _userRequestTimes.AddOrUpdate(key,
+            _ => new List<DateTime> { now },
+            (_, list) =>
+            {
+                lock (list)
+                {
+                    list.RemoveAll(t => t < window);
+                    list.Add(now);
+                    return list;
+                }
+            });
+
+        lock (times)
+        {
+            return times.Count <= RateLimitPerMinute;
+        }
+    }
+
     public List<string> GetSuggestedChips(ClaimsPrincipal userPrincipal)
     {
         var role = userPrincipal.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
@@ -96,6 +121,18 @@ public class ChatbotService : IChatbotService
             };
         }
 
+        // Rate limit: Max 40 requests per minute per user/IP
+        var rateLimitKey = userId > 0 ? $"usr_{userId}" : $"ip_{ipAddress ?? "unknown"}";
+        if (!CheckRateLimit(rateLimitKey))
+        {
+            return new ChatMessageResponse
+            {
+                Reply = "You are sending messages too quickly. Please wait a moment before sending another message.",
+                Role = role,
+                SuggestedChips = chips
+            };
+        }
+
         // 1. Get filtered tools for this role
         var allowedTools = _toolRegistry.GetToolsForRole(role).ToList();
 
@@ -146,7 +183,8 @@ public class ChatbotService : IChatbotService
                     Role = role,
                     Proposal = toolResult.Proposal,
                     SuggestedChips = chips,
-                    ActionData = toolResult.Data
+                    ActionData = toolResult.Data,
+                    Suggestions = toolResult.Suggestions
                 };
             }
             catch (Exception ex)
@@ -161,12 +199,55 @@ public class ChatbotService : IChatbotService
             }
         }
 
-        // 4. Return direct text decision
+        // 4. Audit Log recording navigation or fallback events
+        try
+        {
+            string actionName = "Chatbot.DirectReply";
+            string details = $"Direct reply for prompt: \"{rawMessage}\"";
+
+            if (decision.ActionData != null)
+            {
+                var actionDataJson = JsonSerializer.Serialize(decision.ActionData);
+                if (actionDataJson.Contains("\"navigate\""))
+                {
+                    actionName = "Chatbot.Navigation";
+                    details = $"Navigated to screen via prompt: \"{rawMessage}\"";
+                }
+                else if (actionDataJson.Contains("\"suggestions\""))
+                {
+                    actionName = "Chatbot.Fallback";
+                    var matchedLabels = decision.Suggestions != null
+                        ? string.Join(", ", decision.Suggestions.Select(s => s.Label))
+                        : "None";
+                    details = $"Fallback event for prompt: \"{rawMessage}\". Matched suggestions: [{matchedLabels}]";
+                }
+            }
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                InstituteId = instituteId,
+                UserId = userId,
+                UserEmail = email,
+                Action = actionName,
+                Details = details,
+                IpAddress = ipAddress,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to write audit log for direct reply/fallback");
+        }
+
+        // 5. Return direct text decision
         return new ChatMessageResponse
         {
             Reply = decision.DirectReply ?? "I couldn't process your request. Please ask a question related to your role or select one of the suggested shortcuts below.",
             Role = role,
-            SuggestedChips = chips
+            SuggestedChips = chips,
+            ActionData = decision.ActionData,
+            Suggestions = decision.Suggestions
         };
     }
 

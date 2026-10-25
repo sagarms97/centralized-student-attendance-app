@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using StudentAttendance.Api.DTOs;
+using StudentAttendance.Api.Models;
 
 namespace StudentAttendance.Api.Services.Chatbot;
 
@@ -10,6 +12,8 @@ public class LlmDecision
     public string? SelectedToolName { get; set; }
     public JsonElement Arguments { get; set; }
     public string? DirectReply { get; set; }
+    public object? ActionData { get; set; }
+    public List<ChatSuggestionOption>? Suggestions { get; set; }
 }
 
 public interface ILlmService
@@ -38,6 +42,15 @@ public class LlmService : ILlmService
 
     public async Task<LlmDecision> RouteAndSelectToolAsync(ClaimsPrincipal user, string userMessage, IEnumerable<ChatTool> availableTools)
     {
+        var role = user.FindFirstValue(ClaimTypes.Role) ?? "User";
+
+        // 1. Before calling LLM, run lightweight matcher for short and one-word messages against route labels, keywords, and synonyms
+        var shortMatch = CheckShortMessageOrDirectRoute(user, userMessage, role);
+        if (shortMatch != null)
+        {
+            return shortMatch;
+        }
+
         var apiKey = _configuration["AiChatbot:ApiKey"] ?? string.Empty;
         var model = _configuration["AiChatbot:Model"] ?? "gemini-1.5-flash";
 
@@ -57,6 +70,44 @@ public class LlmService : ILlmService
 
         // Deterministic Built-In Semantic Tool Matcher Fallback
         return ExecuteBuiltInSemanticMatcher(user, userMessage, availableTools);
+    }
+
+    private LlmDecision? CheckShortMessageOrDirectRoute(ClaimsPrincipal user, string userMessage, string role)
+    {
+        var clean = (userMessage ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(clean)) return null;
+
+        var words = clean.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        // Short message check: typically 1 to 3 words (e.g. "Reports", "Leave requests", "Attendance", "Staff", "Timetable")
+        bool isShort = words.Length <= 3;
+
+        bool isExplicitNav = clean.StartsWith("go to", StringComparison.OrdinalIgnoreCase) ||
+                             clean.StartsWith("take me to", StringComparison.OrdinalIgnoreCase) ||
+                             clean.StartsWith("open ", StringComparison.OrdinalIgnoreCase) ||
+                             clean.StartsWith("navigate to", StringComparison.OrdinalIgnoreCase);
+
+        if (isShort || isExplicitNav)
+        {
+            var matchedRoute = _routeRegistry.MatchByKeyword(clean, role);
+            if (matchedRoute != null)
+            {
+                var suggestions = _routeRegistry.GetSuggestionsForRoute(matchedRoute, role);
+                return new LlmDecision
+                {
+                    DirectReply = $"Here is **[{matchedRoute.Label}]({matchedRoute.AngularRoute})**.\n{matchedRoute.Description}\n\nTap below to open the page or choose a related question:",
+                    ActionData = new
+                    {
+                        type = "navigate",
+                        route = matchedRoute.AngularRoute,
+                        label = matchedRoute.Label,
+                        routeKey = matchedRoute.Key
+                    },
+                    Suggestions = suggestions
+                };
+            }
+        }
+
+        return null;
     }
 
     private async Task<LlmDecision?> CallGeminiFunctionCallingAsync(
@@ -492,15 +543,37 @@ public class LlmService : ILlmService
         }
         #endregion
 
-        // Polite, unsupported / out-of-role response detailing permitted capabilities
-        var availableToolsDescription = string.Join("\n", toolList.Select(t => $"• `{t.Name}`: {t.Description}"));
-        var reply = $"I couldn't match your request to an authorized tool for your role (**{role}**).\n\n" +
-                    $"Here are the tools you have permission to use:\n\n{availableToolsDescription}\n\n" +
-                    $"You can ask natural questions corresponding to any of these tools!";
+        // Smart Fallback (replaces raw developer tool dump)
+        var fuzzyRoutes = _routeRegistry.FuzzyMatch(userMessage, role, 3).ToList();
+        var fallbackSuggestions = new List<ChatSuggestionOption>();
+
+        if (fuzzyRoutes.Count > 0)
+        {
+            foreach (var r in fuzzyRoutes)
+            {
+                var rSuggestions = _routeRegistry.GetSuggestionsForRoute(r, role);
+                foreach (var s in rSuggestions)
+                {
+                    if (!fallbackSuggestions.Any(x => x.Label == s.Label))
+                    {
+                        fallbackSuggestions.Add(s);
+                        if (fallbackSuggestions.Count >= 4) break;
+                    }
+                }
+                if (fallbackSuggestions.Count >= 4) break;
+            }
+        }
+
+        if (fallbackSuggestions.Count == 0)
+        {
+            fallbackSuggestions = _routeRegistry.GetDefaultSuggestionsForRole(role);
+        }
 
         return new LlmDecision
         {
-            DirectReply = reply
+            DirectReply = "I'm not sure which one you meant. Did you want one of these?",
+            ActionData = new { type = "suggestions" },
+            Suggestions = fallbackSuggestions.Take(4).ToList()
         };
     }
 }

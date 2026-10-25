@@ -112,7 +112,8 @@ export class ChatbotService {
           timestamp: new Date(),
           proposal: res.proposal,
           suggestedChips: res.suggestedChips,
-          actionData: res.actionData
+          actionData: res.actionData,
+          suggestions: res.suggestions
         };
         this.messages.update(msgs => [...msgs, botMsg]);
         if (res.suggestedChips && res.suggestedChips.length > 0) {

@@ -1,3 +1,4 @@
+using StudentAttendance.Api.DTOs;
 using StudentAttendance.Api.Models;
 
 namespace StudentAttendance.Api.Services.Chatbot;
@@ -19,6 +20,8 @@ public interface IRouteRegistry
     AppRouteEntry? FindByKey(string key, string role);
     AppRouteEntry? MatchByKeyword(string message, string role);
     IEnumerable<AppRouteEntry> FuzzyMatch(string message, string role, int maxResults = 4);
+    List<ChatSuggestionOption> GetSuggestionsForRoute(AppRouteEntry route, string role);
+    List<ChatSuggestionOption> GetDefaultSuggestionsForRole(string role);
 }
 
 public class RouteRegistry : IRouteRegistry
@@ -297,5 +300,181 @@ public class RouteRegistry : IRouteRegistry
         .Select(x => x.Route);
 
         return scored;
+    }
+
+    public List<ChatSuggestionOption> GetSuggestionsForRoute(AppRouteEntry route, string role)
+    {
+        var list = new List<ChatSuggestionOption>();
+
+        // 1. Primary action is always navigation to this route (if allowed for role)
+        if (route.AllowedRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            list.Add(new ChatSuggestionOption
+            {
+                Label = $"Open {route.Label}",
+                Action = "navigate",
+                Route = route.AngularRoute,
+                RouteKey = route.Key
+            });
+        }
+
+        // 2. Add ready-made question options based on route and role
+        switch (route.Key)
+        {
+            case "reports_and_analytics":
+                if (string.Equals(role, Roles.InstituteAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Today's attendance summary", Action = "send_message", Query = "Today's attendance summary" });
+                    list.Add(new ChatSuggestionOption { Label = "Students with low attendance", Action = "send_message", Query = "Students with low attendance" });
+                    list.Add(new ChatSuggestionOption { Label = "Monthly attendance report", Action = "send_message", Query = "Monthly attendance report" });
+                }
+                else
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Class attendance report", Action = "send_message", Query = "Class attendance report" });
+                    list.Add(new ChatSuggestionOption { Label = "Students with low attendance", Action = "send_message", Query = "Students with low attendance" });
+                }
+                break;
+
+            case "leave_requests":
+                if (string.Equals(role, Roles.InstituteAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Show pending leave requests", Action = "send_message", Query = "Show pending leave requests" });
+                    list.Add(new ChatSuggestionOption { Label = "Open Approvals", Action = "navigate", Route = "/app/approvals", RouteKey = "approvals" });
+                    list.Add(new ChatSuggestionOption { Label = "Leave requests summary", Action = "send_message", Query = "Leave requests summary" });
+                }
+                else if (string.Equals(role, Roles.Parent, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Apply for leave", Action = "send_message", Query = "Apply leave for my child from tomorrow for 2 days due to fever" });
+                    list.Add(new ChatSuggestionOption { Label = "View leave history", Action = "send_message", Query = "Show my leave history" });
+                }
+                else
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Apply for leave", Action = "send_message", Query = "Apply for leave" });
+                    list.Add(new ChatSuggestionOption { Label = "My leave history", Action = "send_message", Query = "My leave history" });
+                }
+                break;
+
+            case "staff_directory":
+                list.Add(new ChatSuggestionOption { Label = "Show staff directory", Action = "send_message", Query = "Show staff directory" });
+                list.Add(new ChatSuggestionOption { Label = "How do I add a new faculty member?", Action = "send_message", Query = "How do I add a faculty member?" });
+                break;
+
+            case "students_and_import":
+                list.Add(new ChatSuggestionOption { Label = "Show student directory", Action = "send_message", Query = "Show student directory" });
+                list.Add(new ChatSuggestionOption { Label = "Show class strength and sections", Action = "send_message", Query = "Show class strength and sections" });
+                break;
+
+            case "parent_directory":
+                list.Add(new ChatSuggestionOption { Label = "Show parent directory", Action = "send_message", Query = "Show parent directory" });
+                list.Add(new ChatSuggestionOption { Label = "Link parent to student", Action = "send_message", Query = "How do I link a parent to a student?" });
+                break;
+
+            case "subjects_setup":
+                list.Add(new ChatSuggestionOption { Label = "List all subjects", Action = "send_message", Query = "List all subjects" });
+                list.Add(new ChatSuggestionOption { Label = "Add new subject", Action = "send_message", Query = "Add subject" });
+                break;
+
+            case "timetable_setup":
+                if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Show my timetable today", Action = "send_message", Query = "Show my timetable" });
+                    list.Add(new ChatSuggestionOption { Label = "Open Period Swaps", Action = "navigate", Route = "/app/swaps", RouteKey = "period_swaps" });
+                }
+                else
+                {
+                    list.Add(new ChatSuggestionOption { Label = "View timetable schedule", Action = "send_message", Query = "How do I setup timetable?" });
+                    list.Add(new ChatSuggestionOption { Label = "Open Period Swaps", Action = "navigate", Route = "/app/swaps", RouteKey = "period_swaps" });
+                }
+                break;
+
+            case "approvals":
+                list.Add(new ChatSuggestionOption { Label = "Show pending approvals", Action = "send_message", Query = "Show pending approvals" });
+                list.Add(new ChatSuggestionOption { Label = "Show pending leave requests", Action = "send_message", Query = "Show pending leave requests" });
+                break;
+
+            case "mark_attendance":
+                if (string.Equals(role, Roles.Staff, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "My classes today", Action = "send_message", Query = "My classes today" });
+                    list.Add(new ChatSuggestionOption { Label = "Check institute attendance", Action = "send_message", Query = "Check institute attendance" });
+                }
+                else
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Today's attendance summary", Action = "send_message", Query = "Today's attendance summary" });
+                    list.Add(new ChatSuggestionOption { Label = "Students with low attendance", Action = "send_message", Query = "Students with low attendance" });
+                }
+                break;
+
+            case "period_swaps":
+                list.Add(new ChatSuggestionOption { Label = "Show pending swaps", Action = "send_message", Query = "Check my pending swaps" });
+                list.Add(new ChatSuggestionOption { Label = "Open Timetable Setup", Action = "navigate", Route = "/app/timetable", RouteKey = "timetable_setup" });
+                break;
+
+            case "super_admin_overview":
+                list.Add(new ChatSuggestionOption { Label = "Platform overview stats", Action = "send_message", Query = "Platform Overview" });
+                list.Add(new ChatSuggestionOption { Label = "List all colleges", Action = "send_message", Query = "List institutes" });
+                list.Add(new ChatSuggestionOption { Label = "Open Audit Logs", Action = "navigate", Route = "/app/super-admin/audit-logs", RouteKey = "super_admin_audit_logs" });
+                break;
+
+            case "super_admin_audit_logs":
+                list.Add(new ChatSuggestionOption { Label = "Recent audit logs", Action = "send_message", Query = "Show recent audit logs" });
+                list.Add(new ChatSuggestionOption { Label = "Open Platform Overview", Action = "navigate", Route = "/app/super-admin", RouteKey = "super_admin_overview" });
+                break;
+
+            case "parent_portal":
+                list.Add(new ChatSuggestionOption { Label = "My children's attendance", Action = "send_message", Query = "How is my child's attendance?" });
+                list.Add(new ChatSuggestionOption { Label = "Apply for student leave", Action = "send_message", Query = "Apply leave for my child from tomorrow for 2 days due to fever" });
+                break;
+
+            default:
+                if (string.Equals(role, Roles.InstituteAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    list.Add(new ChatSuggestionOption { Label = "Today's attendance summary", Action = "send_message", Query = "Today's attendance summary" });
+                    list.Add(new ChatSuggestionOption { Label = "Open Reports & Analytics", Action = "navigate", Route = "/app/reports", RouteKey = "reports_and_analytics" });
+                }
+                break;
+        }
+
+        return list.Take(4).ToList();
+    }
+
+    public List<ChatSuggestionOption> GetDefaultSuggestionsForRole(string role)
+    {
+        return role switch
+        {
+            Roles.SuperAdmin => new List<ChatSuggestionOption>
+            {
+                new() { Label = "Open Platform Overview", Action = "navigate", Route = "/app/super-admin", RouteKey = "super_admin_overview" },
+                new() { Label = "Open Platform Audit Logs", Action = "navigate", Route = "/app/super-admin/audit-logs", RouteKey = "super_admin_audit_logs" },
+                new() { Label = "Platform overview stats", Action = "send_message", Query = "Platform Overview" },
+                new() { Label = "List all colleges", Action = "send_message", Query = "List institutes" }
+            },
+            Roles.InstituteAdmin => new List<ChatSuggestionOption>
+            {
+                new() { Label = "Open Dashboard", Action = "navigate", Route = "/app/dashboard", RouteKey = "dashboard" },
+                new() { Label = "Open Reports & Analytics", Action = "navigate", Route = "/app/reports", RouteKey = "reports_and_analytics" },
+                new() { Label = "Today's attendance summary", Action = "send_message", Query = "Today's attendance summary" },
+                new() { Label = "Show pending leave requests", Action = "send_message", Query = "Show pending leave requests" }
+            },
+            Roles.Staff => new List<ChatSuggestionOption>
+            {
+                new() { Label = "Open Timetable Setup", Action = "navigate", Route = "/app/timetable", RouteKey = "timetable_setup" },
+                new() { Label = "Open Mark Attendance", Action = "navigate", Route = "/app/attendance", RouteKey = "mark_attendance" },
+                new() { Label = "Show my timetable today", Action = "send_message", Query = "Show my timetable" },
+                new() { Label = "Apply for leave", Action = "send_message", Query = "Apply for leave" }
+            },
+            Roles.Parent => new List<ChatSuggestionOption>
+            {
+                new() { Label = "Open Parent Portal", Action = "navigate", Route = "/app/parent-portal", RouteKey = "parent_portal" },
+                new() { Label = "Open Leave Requests", Action = "navigate", Route = "/app/leaves", RouteKey = "leave_requests" },
+                new() { Label = "My children's attendance", Action = "send_message", Query = "How is my child's attendance?" },
+                new() { Label = "Apply for student leave", Action = "send_message", Query = "Apply leave for my child from tomorrow for 2 days due to fever" }
+            },
+            _ => new List<ChatSuggestionOption>
+            {
+                new() { Label = "Open Dashboard", Action = "navigate", Route = "/app/dashboard", RouteKey = "dashboard" },
+                new() { Label = "Help & Manual", Action = "navigate", Route = "/app/dashboard", RouteKey = "help" }
+            }
+        };
     }
 }

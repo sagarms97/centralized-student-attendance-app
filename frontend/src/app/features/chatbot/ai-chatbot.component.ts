@@ -13,7 +13,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { ChatbotService } from '../../core/services/chatbot.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SpeechRecognitionService } from '../../core/services/speech-recognition.service';
-import { ChatbotActionProposal } from '../../core/models/chatbot.models';
+import { ChatbotActionProposal, ChatSuggestionOption } from '../../core/models/chatbot.models';
 
 @Component({
   selector: 'app-ai-chatbot',
@@ -144,6 +144,32 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
                         <mat-icon>cancel</mat-icon>
                         <span>Action was cancelled.</span>
                       </div>
+                    }
+                  </div>
+                }
+
+                <!-- Navigation Action Card -->
+                @if (m.actionData && m.actionData.type === 'navigate') {
+                  <div class="nav-action-card">
+                    <button type="button" class="nav-direct-btn" (click)="navigateToRoute(m.actionData.route)">
+                      <mat-icon>open_in_new</mat-icon>
+                      <span>Open {{ m.actionData.label }}</span>
+                    </button>
+                  </div>
+                }
+
+                <!-- Related Suggestions / Fallback Options -->
+                @if (m.suggestions && m.suggestions.length > 0) {
+                  <div class="message-suggestions">
+                    @for (s of m.suggestions; track s.label) {
+                      <button
+                        type="button"
+                        class="suggestion-btn"
+                        [class.nav-btn]="s.action === 'navigate'"
+                        (click)="onSuggestionClick(s)">
+                        <mat-icon class="btn-icon">{{ s.action === 'navigate' ? 'open_in_new' : 'chat_bubble_outline' }}</mat-icon>
+                        <span>{{ s.label }}</span>
+                      </button>
                     }
                   </div>
                 }
@@ -439,8 +465,9 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       border-radius: 14px;
       position: relative;
       font-size: 13.5px;
-      line-height: 1.45;
-      word-wrap: break-word;
+      line-height: 1.5;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .user-bubble {
       background: #1a237e;
@@ -457,7 +484,9 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       .message-time { color: #94a3b8; text-align: left; }
     }
     .message-text {
-      white-space: pre-wrap;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
       p { margin: 0 0 6px 0; }
       strong { font-weight: 600; }
     }
@@ -555,6 +584,84 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       margin-right: 6px;
     }
 
+    /* Direct Navigation Action Card */
+    .nav-action-card {
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+    .nav-direct-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #1a237e;
+      color: #ffffff;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(26, 35, 126, 0.2);
+      transition: all 0.2s;
+      &:hover {
+        background: #283593;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(26, 35, 126, 0.3);
+      }
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    /* Message Suggestions / Fallback Buttons */
+    .message-suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+    .suggestion-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #1e293b;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease-in-out;
+      width: 100%;
+      &:hover {
+        background: #f1f5f9;
+        border-color: #94a3b8;
+        color: #0f172a;
+      }
+      &.nav-btn {
+        background: #eff6ff;
+        border-color: #bfdbfe;
+        color: #1d4ed8;
+        font-weight: 600;
+        &:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
+          color: #1e40af;
+        }
+      }
+      .btn-icon {
+        font-size: 15px;
+        width: 15px;
+        height: 15px;
+        flex-shrink: 0;
+      }
+    }
+
     /* Typing Dots */
     .typing-bubble {
       background: #ffffff;
@@ -588,10 +695,12 @@ import { ChatbotActionProposal } from '../../core/models/chatbot.models';
       background: #ffffff;
       border-top: 1px solid #e2e8f0;
       white-space: nowrap;
-      scrollbar-width: none;
-      &::-webkit-scrollbar { display: none; }
+      scrollbar-width: thin;
+      &::-webkit-scrollbar { height: 4px; }
+      &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     }
     .suggestion-chip {
+      flex-shrink: 0;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
       color: #1d4ed8;
@@ -868,6 +977,22 @@ export class AiChatbotComponent implements AfterViewChecked, OnDestroy {
 
   onChipClick(chipText: string): void {
     this.chatbotService.sendMessage(chipText);
+  }
+
+  onSuggestionClick(s: ChatSuggestionOption): void {
+    if (s.action === 'navigate' && s.route) {
+      this.navigateToRoute(s.route);
+    } else {
+      const text = s.query || s.label;
+      this.chatbotService.sendMessage(text);
+    }
+  }
+
+  navigateToRoute(route: string): void {
+    if (!route) return;
+    this.router.navigateByUrl(route).then(() => {
+      this.chatbotService.close();
+    });
   }
 
   onConfirm(messageId: string, proposal: ChatbotActionProposal): void {

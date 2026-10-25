@@ -1508,7 +1508,8 @@ public class ToolRegistry : IToolRegistry
                         route = matchedRoute.AngularRoute,
                         label = matchedRoute.Label,
                         routeKey = matchedRoute.Key
-                    }
+                    },
+                    Suggestions = routeRegistry.GetSuggestionsForRoute(matchedRoute, role)
                 });
             }
         });
