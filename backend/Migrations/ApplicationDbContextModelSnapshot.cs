@@ -36,6 +36,9 @@ namespace StudentAttendance.Api.Migrations
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
 
+                    b.Property<double?>("FaceConfidence")
+                        .HasColumnType("float");
+
                     b.Property<int>("InstituteId")
                         .HasColumnType("int");
 
@@ -56,6 +59,13 @@ namespace StudentAttendance.Api.Migrations
 
                     b.Property<string>("Remarks")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Manual");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -259,6 +269,52 @@ namespace StudentAttendance.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Institutes");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.InstituteFaceSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ConsentNoticeText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DataRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<double>("LowConfidenceThreshold")
+                        .HasColumnType("float");
+
+                    b.Property<double>("MatchThreshold")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstituteId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("InstituteFaceSettings");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.LeaveRequest", b =>
@@ -751,6 +807,124 @@ namespace StudentAttendance.Api.Migrations
                     b.ToTable("Students");
                 });
 
+            modelBuilder.Entity("StudentAttendance.Api.Models.StudentFaceConsent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("ConsentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConsentGivenBy")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("WithdrawnByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("WithdrawnDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("WithdrawnByUserId");
+
+                    b.HasIndex("InstituteId", "StudentId", "IsActive");
+
+                    b.ToTable("StudentFaceConsents");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.StudentFaceEmbedding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("EmbeddingVectorEncrypted")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("EncryptionIv")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("EncryptionTag")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int>("InstituteId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PoseType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("QualityScore")
+                        .HasColumnType("float");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("InstituteId", "StudentId", "IsActive");
+
+                    b.ToTable("StudentFaceEmbeddings");
+                });
+
             modelBuilder.Entity("StudentAttendance.Api.Models.Subject", b =>
                 {
                     b.Property<int>("Id")
@@ -1054,6 +1228,22 @@ namespace StudentAttendance.Api.Migrations
                     b.Navigation("Subject");
                 });
 
+            modelBuilder.Entity("StudentAttendance.Api.Models.InstituteFaceSettings", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Institute", null)
+                        .WithOne()
+                        .HasForeignKey("StudentAttendance.Api.Models.InstituteFaceSettings", "InstituteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("UpdatedByUser");
+                });
+
             modelBuilder.Entity("StudentAttendance.Api.Models.LeaveRequest", b =>
                 {
                     b.HasOne("StudentAttendance.Api.Models.Parent", "Parent")
@@ -1229,6 +1419,58 @@ namespace StudentAttendance.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Class");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.StudentFaceConsent", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.Parent", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "RecordedByUser")
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.User", "WithdrawnByUser")
+                        .WithMany()
+                        .HasForeignKey("WithdrawnByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("RecordedByUser");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("WithdrawnByUser");
+                });
+
+            modelBuilder.Entity("StudentAttendance.Api.Models.StudentFaceEmbedding", b =>
+                {
+                    b.HasOne("StudentAttendance.Api.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentAttendance.Api.Models.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Student");
                 });
 
             modelBuilder.Entity("StudentAttendance.Api.Models.Subject", b =>

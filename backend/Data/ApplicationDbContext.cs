@@ -34,6 +34,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserInvite> UserInvites => Set<UserInvite>();
     public DbSet<OtpVerification> OtpVerifications => Set<OtpVerification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<InstituteFaceSettings> InstituteFaceSettings => Set<InstituteFaceSettings>();
+    public DbSet<StudentFaceConsent> StudentFaceConsents => Set<StudentFaceConsent>();
+    public DbSet<StudentFaceEmbedding> StudentFaceEmbeddings => Set<StudentFaceEmbedding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +59,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<UserInvite>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<OtpVerification>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(e => _tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null);
+        modelBuilder.Entity<InstituteFaceSettings>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<StudentFaceConsent>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
+        modelBuilder.Entity<StudentFaceEmbedding>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId) && e.IsActive);
 
         modelBuilder.Entity<Institute>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<User>().HasQueryFilter(e => (_tenantService.InstituteId == null || e.InstituteId == _tenantService.InstituteId || e.InstituteId == null) && e.IsActive);
@@ -219,6 +225,8 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(a => a.MarkedByUserId)
                   .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(a => a.Source).HasMaxLength(20).HasDefaultValue("Manual");
         });
 
         // Parent
@@ -353,6 +361,64 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(a => a.User)
                   .WithMany()
                   .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Face Attendance: Institute Settings
+        modelBuilder.Entity<InstituteFaceSettings>(entity =>
+        {
+            entity.HasIndex(s => s.InstituteId).IsUnique();
+
+            entity.HasOne<Institute>()
+                  .WithOne()
+                  .HasForeignKey<InstituteFaceSettings>(s => s.InstituteId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(s => s.UpdatedByUser)
+                  .WithMany()
+                  .HasForeignKey(s => s.UpdatedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Face Attendance: Student Consent
+        modelBuilder.Entity<StudentFaceConsent>(entity =>
+        {
+            entity.HasIndex(c => new { c.InstituteId, c.StudentId, c.IsActive });
+
+            entity.HasOne(c => c.Student)
+                  .WithMany()
+                  .HasForeignKey(c => c.StudentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(c => c.Parent)
+                  .WithMany()
+                  .HasForeignKey(c => c.ParentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(c => c.RecordedByUser)
+                  .WithMany()
+                  .HasForeignKey(c => c.RecordedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(c => c.WithdrawnByUser)
+                  .WithMany()
+                  .HasForeignKey(c => c.WithdrawnByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Face Attendance: Encrypted Face Embeddings
+        modelBuilder.Entity<StudentFaceEmbedding>(entity =>
+        {
+            entity.HasIndex(e => new { e.InstituteId, e.StudentId, e.IsActive });
+
+            entity.HasOne(e => e.Student)
+                  .WithMany()
+                  .HasForeignKey(e => e.StudentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.CreatedByUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedByUserId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }

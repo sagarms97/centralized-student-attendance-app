@@ -7,6 +7,7 @@ using StudentAttendance.Api.Data;
 using StudentAttendance.Api.Middleware;
 using StudentAttendance.Api.Services;
 using StudentAttendance.Api.Services.Chatbot;
+using StudentAttendance.Api.Services.FaceRecognition;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,7 @@ builder.Services.AddSingleton<IRouteRegistry, RouteRegistry>();
 builder.Services.AddSingleton<ISpeechToTextService, SpeechToTextService>();
 builder.Services.AddScoped<ILlmService, LlmService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
+builder.Services.AddSingleton<IFaceEncryptionService, FaceEncryptionService>();
 
 // CORS
 builder.Services.AddCors(options =>

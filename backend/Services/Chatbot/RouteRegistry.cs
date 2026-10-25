@@ -210,6 +210,28 @@ public class RouteRegistry : IRouteRegistry
             Keywords = new[] { "help", "user manual", "manual", "documentation", "guide", "faq", "how to use", "support" },
             Description = "Application manual, workflow documentation, and FAQs."
         });
+
+        // 17. Face Attendance Settings
+        _routes.Add(new AppRouteEntry
+        {
+            Key = "face_attendance_settings",
+            Label = "Face Attendance Settings",
+            AngularRoute = "/app/face-attendance/settings",
+            AllowedRoles = new[] { Roles.InstituteAdmin },
+            Keywords = new[] { "face attendance settings", "face settings", "facial attendance settings", "face recognition settings", "facial recognition" },
+            Description = "Configure face attendance module thresholds, data retention, and institute-wide privacy settings."
+        });
+
+        // 18. Face Attendance Consent & Roster
+        _routes.Add(new AppRouteEntry
+        {
+            Key = "face_attendance_consent",
+            Label = "Face Attendance Consent",
+            AngularRoute = "/app/face-attendance/consent",
+            AllowedRoles = new[] { Roles.InstituteAdmin, Roles.Staff },
+            Keywords = new[] { "face consent", "face attendance consent", "facial consent", "parent consent for face", "face roster" },
+            Description = "Manage student face attendance consent records, view parental permissions, and enroll facial photos."
+        });
     }
 
     public IReadOnlyList<AppRouteEntry> GetAllRoutes() => _routes.AsReadOnly();

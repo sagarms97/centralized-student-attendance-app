@@ -78,6 +78,15 @@ export const routes: Routes = [
         loadComponent: () => import('./features/parents/leave-approvals.component').then(m => m.LeaveApprovalsComponent)
       },
       {
+        path: 'face-attendance/settings',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./features/face-attendance/face-settings.component').then(m => m.FaceSettingsComponent)
+      },
+      {
+        path: 'face-attendance/consent',
+        loadComponent: () => import('./features/face-attendance/face-consent.component').then(m => m.FaceConsentComponent)
+      },
+      {
         path: 'super-admin',
         canActivate: [superAdminGuard],
         loadComponent: () => import('./features/super-admin/super-admin-dashboard.component').then(m => m.SuperAdminDashboardComponent)

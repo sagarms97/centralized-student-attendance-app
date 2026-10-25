@@ -152,6 +152,11 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
                 </mat-icon>
                 <span matListItemTitle>Approvals</span>
               </a>
+
+              <a mat-list-item routerLink="/app/face-attendance/settings" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>face_retouching_natural</mat-icon>
+                <span matListItemTitle>Face Settings</span>
+              </a>
             }
 
             <!-- Staff & Admin Operations -->
@@ -168,6 +173,11 @@ import { AiChatbotComponent } from '../chatbot/ai-chatbot.component';
               <a mat-list-item routerLink="/app/attendance" routerLinkActive="active-link" (click)="closeIfHandset()">
                 <mat-icon matListItemIcon>fact_check</mat-icon>
                 <span matListItemTitle>Mark Attendance</span>
+              </a>
+
+              <a mat-list-item routerLink="/app/face-attendance/consent" routerLinkActive="active-link" (click)="closeIfHandset()">
+                <mat-icon matListItemIcon>camera_front</mat-icon>
+                <span matListItemTitle>Face Consent & Roster</span>
               </a>
 
               <a mat-list-item routerLink="/app/swaps" routerLinkActive="active-link" (click)="closeIfHandset()">

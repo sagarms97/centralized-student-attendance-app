@@ -140,6 +140,8 @@ public class AttendanceRecord : BaseTenantEntity
     public User MarkedByUser { get; set; } = null!;
     public DateTime MarkedAt { get; set; } = DateTime.UtcNow;
     public int? LeaveRequestId { get; set; }
+    public string Source { get; set; } = "Manual"; // "Manual" or "Face"
+    public double? FaceConfidence { get; set; }
 }
 
 public class Parent : BaseTenantEntity
