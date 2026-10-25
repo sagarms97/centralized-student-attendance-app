@@ -166,6 +166,22 @@ import { StudentAttendanceSummary, DailyAttendanceReportItem, ClassSummary } fro
                   </td>
                 </ng-container>
 
+                <!-- Source Breakdown -->
+                <ng-container matColumnDef="sourceBreakdown">
+                  <th mat-header-cell *matHeaderCellDef>Source Breakdown</th>
+                  <td mat-cell *matCellDef="let s">
+                    <div class="source-pills">
+                      <span class="pill-face" *ngIf="(s.faceVerifiedSessions || 0) > 0" [matTooltip]="(s.faceVerifiedSessions || 0) + ' sessions verified by Face Recognition'">
+                        <mat-icon class="source-mini-icon">face</mat-icon> {{ s.faceVerifiedSessions }} Face
+                      </span>
+                      <span class="pill-manual" *ngIf="(s.manualSessions || 0) > 0" [matTooltip]="(s.manualSessions || 0) + ' sessions marked manually'">
+                        <mat-icon class="source-mini-icon">edit</mat-icon> {{ s.manualSessions }} Manual
+                      </span>
+                      <span *ngIf="!s.faceVerifiedSessions && !s.manualSessions" class="text-muted">-</span>
+                    </div>
+                  </td>
+                </ng-container>
+
                 <!-- Percentage -->
                 <ng-container matColumnDef="percentage">
                   <th mat-header-cell *matHeaderCellDef>Attendance %</th>
@@ -201,7 +217,7 @@ import { StudentAttendanceSummary, DailyAttendanceReportItem, ClassSummary } fro
                 <tr mat-row *matRowDef="let row; columns: studentColumns;" [class.defaulter-row]="row.isDefaulter"></tr>
 
                 <tr class="mat-row" *matNoDataRow>
-                  <td class="mat-cell empty-state" colspan="8">
+                  <td class="mat-cell empty-state" colspan="9">
                     <p>No student attendance records found for criteria.</p>
                   </td>
                 </tr>
@@ -243,6 +259,25 @@ import { StudentAttendanceSummary, DailyAttendanceReportItem, ClassSummary } fro
                   <td mat-cell *matCellDef="let d">{{ d.staffName }}</td>
                 </ng-container>
 
+                <ng-container matColumnDef="source">
+                  <th mat-header-cell *matHeaderCellDef>Source</th>
+                  <td mat-cell *matCellDef="let d">
+                    @if (d.source === 'Face') {
+                      <span class="badge-source-face" [matTooltip]="'100% Face Verified' + (d.averageFaceConfidence ? ' (' + d.averageFaceConfidence + '% avg confidence)' : '')">
+                        <mat-icon class="source-mini-icon">face</mat-icon> Face
+                      </span>
+                    } @else if (d.source === 'Mixed') {
+                      <span class="badge-source-mixed" [matTooltip]="d.faceVerifiedCount + ' via Face, ' + d.manualCount + ' Manual'">
+                        <mat-icon class="source-mini-icon">hub</mat-icon> Mixed
+                      </span>
+                    } @else {
+                      <span class="badge-source-manual">
+                        <mat-icon class="source-mini-icon">edit</mat-icon> Manual
+                      </span>
+                    }
+                  </td>
+                </ng-container>
+
                 <ng-container matColumnDef="turnout">
                   <th mat-header-cell *matHeaderCellDef>Present / Total</th>
                   <td mat-cell *matCellDef="let d">{{ d.presentCount }} / {{ d.totalStudents }}</td>
@@ -259,7 +294,7 @@ import { StudentAttendanceSummary, DailyAttendanceReportItem, ClassSummary } fro
                 <tr mat-row *matRowDef="let row; columns: dailyColumns;"></tr>
 
                 <tr class="mat-row" *matNoDataRow>
-                  <td class="mat-cell empty-state" colspan="7">
+                  <td class="mat-cell empty-state" colspan="8">
                     <p>No conducted sessions found.</p>
                   </td>
                 </tr>
@@ -374,6 +409,63 @@ import { StudentAttendanceSummary, DailyAttendanceReportItem, ClassSummary } fro
     .badge-icon { font-size: 14px; width: 14px; height: 14px; margin-right: 4px; }
     .mt-3 { margin-top: 16px; }
     .empty-state { text-align: center; padding: 36px; color: #94a3b8; }
+    .source-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+    .pill-face {
+      background: #ede9fe;
+      color: #6d28d9;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .pill-manual {
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .badge-source-face {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #ede9fe;
+      color: #6d28d9;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    .badge-source-mixed {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #fef3c7;
+      color: #b45309;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    .badge-source-manual {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #f1f5f9;
+      color: #64748b;
+      font-weight: 500;
+      font-size: 0.8rem;
+    }
+    .source-mini-icon { font-size: 13px; width: 13px; height: 13px; }
   `]
 })
 export class ReportsComponent implements OnInit {
@@ -389,8 +481,8 @@ export class ReportsComponent implements OnInit {
   selectedSubjectId: number | null = null;
   defaulterThreshold = 75;
 
-  studentColumns = ['rollNo', 'name', 'class', 'total', 'present', 'absent', 'percentage', 'status'];
-  dailyColumns = ['date', 'class', 'period', 'subject', 'staff', 'turnout', 'percentage'];
+  studentColumns = ['rollNo', 'name', 'class', 'total', 'present', 'absent', 'sourceBreakdown', 'percentage', 'status'];
+  dailyColumns = ['date', 'class', 'period', 'subject', 'staff', 'source', 'turnout', 'percentage'];
   classColumns = ['className', 'section', 'enrolled', 'sessions', 'average'];
 
   studentSummaries = signal<StudentAttendanceSummary[]>([]);

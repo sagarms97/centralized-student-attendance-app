@@ -23,8 +23,10 @@ export interface StudentAttendanceItem {
   studentId: number;
   rollNo: string;
   fullName: string;
-  status: 'Present' | 'Absent' | 'Late';
+  status: 'Present' | 'Absent' | 'Late' | 'OnLeave';
   remarks?: string;
+  source?: string;
+  faceConfidence?: number;
 }
 
 export interface AttendanceSheet {

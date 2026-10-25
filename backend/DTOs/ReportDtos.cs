@@ -14,6 +14,10 @@ public class DailyAttendanceReportItem
     public int AbsentCount { get; set; }
     public int LateCount { get; set; }
     public double AttendancePercentage => TotalStudents > 0 ? Math.Round((PresentCount + (LateCount * 0.5)) / TotalStudents * 100, 1) : 0;
+    public string Source { get; set; } = "Manual"; // "Manual", "Face", or "Mixed"
+    public int FaceVerifiedCount { get; set; }
+    public int ManualCount { get; set; }
+    public double? AverageFaceConfidence { get; set; }
 }
 
 public class StudentAttendanceSummaryDto
@@ -27,6 +31,8 @@ public class StudentAttendanceSummaryDto
     public int PresentSessions { get; set; }
     public int AbsentSessions { get; set; }
     public int LateSessions { get; set; }
+    public int FaceVerifiedSessions { get; set; }
+    public int ManualSessions { get; set; }
     public double AttendancePercentage => TotalSessions > 0 ? Math.Round((PresentSessions + (LateSessions * 0.5)) / TotalSessions * 100, 1) : 0;
     public bool IsDefaulter { get; set; }
 }

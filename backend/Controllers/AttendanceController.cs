@@ -207,7 +207,9 @@ public class AttendanceController : ControllerBase
                     RollNo = s.RollNo,
                     FullName = s.FullName,
                     Status = record.Status,
-                    Remarks = record.Remarks
+                    Remarks = record.Remarks,
+                    Source = record.Source,
+                    FaceConfidence = record.FaceConfidence
                 };
             }
 
@@ -305,6 +307,10 @@ public class AttendanceController : ControllerBase
                 _ => AttendanceStatus.Present
             };
 
+            var recSource = !string.IsNullOrWhiteSpace(rec.Source) 
+                ? rec.Source 
+                : (!string.IsNullOrWhiteSpace(request.Source) ? request.Source : "Manual");
+
             if (existingDict.TryGetValue(rec.StudentId, out var existing))
             {
                 // Update existing record
@@ -312,6 +318,8 @@ public class AttendanceController : ControllerBase
                 existing.Remarks = rec.Remarks;
                 existing.MarkedByUserId = userId;
                 existing.MarkedAt = DateTime.UtcNow;
+                existing.Source = recSource;
+                if (rec.FaceConfidence.HasValue) existing.FaceConfidence = rec.FaceConfidence;
             }
             else
             {
@@ -327,7 +335,9 @@ public class AttendanceController : ControllerBase
                     Remarks = rec.Remarks,
                     MarkedByUserId = userId,
                     MarkedAt = DateTime.UtcNow,
-                    IsActive = true
+                    IsActive = true,
+                    Source = recSource,
+                    FaceConfidence = rec.FaceConfidence
                 });
             }
         }
@@ -336,6 +346,14 @@ public class AttendanceController : ControllerBase
         {
             await _context.AttendanceRecords.AddRangeAsync(newRecords);
         }
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            InstituteId = tenantId.Value,
+            UserId = userId,
+            Action = "Attendance.Marked",
+            Details = $"Marked attendance for TimetableEntry {entry.Id}, Period {request.PeriodId}, Date {targetDate:yyyy-MM-dd}. Source: {request.Source ?? "Manual"}. Total records: {request.Records.Count}."
+        });
 
         await _context.SaveChangesAsync();
 

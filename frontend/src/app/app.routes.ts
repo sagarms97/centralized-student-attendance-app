@@ -95,6 +95,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/face-attendance/face-camera-capture.component').then(m => m.FaceCameraCaptureComponent)
       },
       {
+        path: 'face-attendance/review',
+        loadComponent: () => import('./features/face-attendance/face-review.component').then(m => m.FaceReviewComponent)
+      },
+      {
         path: 'super-admin',
         canActivate: [superAdminGuard],
         loadComponent: () => import('./features/super-admin/super-admin-dashboard.component').then(m => m.SuperAdminDashboardComponent)

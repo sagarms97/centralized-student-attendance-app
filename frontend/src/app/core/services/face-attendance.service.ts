@@ -135,12 +135,63 @@ export interface ClassRecognitionResult {
   notDetectedStudents: NotDetectedStudent[];
 }
 
+export interface ReviewPhotoItem {
+  index: number;
+  label: string;
+  imageSrc: string;
+}
+
+export interface FaceReviewSessionData {
+  classId: number;
+  className: string;
+  section?: string;
+  timetableEntryId?: number;
+  periodId?: number;
+  periodName?: string;
+  date: string;
+  photos: ReviewPhotoItem[];
+  recognitionResult: ClassRecognitionResult;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class FaceAttendanceService {
   private http = inject(HttpClient);
   private apiUrl = `${environment.apiUrl}/face`;
+  private reviewSession: FaceReviewSessionData | null = null;
+
+  setReviewSession(session: FaceReviewSessionData): void {
+    this.reviewSession = session;
+    try {
+      sessionStorage.setItem('face_review_session', JSON.stringify(session));
+    } catch (e) {
+      console.warn('Session storage write error', e);
+    }
+  }
+
+  getReviewSession(): FaceReviewSessionData | null {
+    if (this.reviewSession) return this.reviewSession;
+    try {
+      const stored = sessionStorage.getItem('face_review_session');
+      if (stored) {
+        this.reviewSession = JSON.parse(stored);
+        return this.reviewSession;
+      }
+    } catch (e) {
+      console.warn('Session storage read error', e);
+    }
+    return null;
+  }
+
+  clearReviewSession(): void {
+    this.reviewSession = null;
+    try {
+      sessionStorage.removeItem('face_review_session');
+    } catch (e) {
+      // ignore
+    }
+  }
 
   getSettings(): Observable<FaceSettings> {
     return this.http.get<FaceSettings>(`${this.apiUrl}/settings`);

@@ -19,8 +19,8 @@ export class AttendanceService {
     return this.http.get<AttendanceSheet>(`${environment.apiUrl}/attendance/sheet?timetableEntryId=${timetableEntryId}&date=${date}`);
   }
 
-  submitAttendance(payload: { timetableEntryId: number; periodId: number; date: string; records: StudentAttendanceItem[] }): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${environment.apiUrl}/attendance/submit`, payload);
+  submitAttendance(payload: { timetableEntryId: number; periodId: number; date: string; source?: string; records: StudentAttendanceItem[] }): Observable<{ message: string; updatedCount?: number; insertedCount?: number }> {
+    return this.http.post<{ message: string; updatedCount?: number; insertedCount?: number }>(`${environment.apiUrl}/attendance/submit`, payload);
   }
 
   getMySwapRequests(): Observable<PeriodSwapRequestItem[]> {

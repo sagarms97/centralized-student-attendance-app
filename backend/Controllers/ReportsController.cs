@@ -68,19 +68,34 @@ public class ReportsController : ControllerBase
                 SubjectName = a.TimetableEntry.Subject.Name,
                 StaffName = a.TimetableEntry.Staff.FullName
             })
-            .Select(g => new DailyAttendanceReportItem
+            .Select(g =>
             {
-                Date = g.Key.Date.ToString("yyyy-MM-dd"),
-                ClassId = g.Key.ClassId,
-                ClassName = g.Key.ClassName,
-                Section = g.Key.Section,
-                PeriodName = g.Key.PeriodName,
-                SubjectName = g.Key.SubjectName,
-                StaffName = g.Key.StaffName,
-                TotalStudents = g.Count(),
-                PresentCount = g.Count(x => x.Status == AttendanceStatus.Present),
-                AbsentCount = g.Count(x => x.Status == AttendanceStatus.Absent),
-                LateCount = g.Count(x => x.Status == AttendanceStatus.Late)
+                var faceCount = g.Count(x => x.Source == "Face");
+                var manualCount = g.Count(x => x.Source != "Face");
+                var confidences = g.Where(x => x.Source == "Face" && x.FaceConfidence.HasValue)
+                                   .Select(x => x.FaceConfidence!.Value)
+                                   .ToList();
+                double? avgConf = confidences.Count > 0 ? Math.Round(confidences.Average() * 100, 1) : null;
+                string source = faceCount > 0 ? (manualCount > 0 ? "Mixed" : "Face") : "Manual";
+
+                return new DailyAttendanceReportItem
+                {
+                    Date = g.Key.Date.ToString("yyyy-MM-dd"),
+                    ClassId = g.Key.ClassId,
+                    ClassName = g.Key.ClassName,
+                    Section = g.Key.Section,
+                    PeriodName = g.Key.PeriodName,
+                    SubjectName = g.Key.SubjectName,
+                    StaffName = g.Key.StaffName,
+                    TotalStudents = g.Count(),
+                    PresentCount = g.Count(x => x.Status == AttendanceStatus.Present),
+                    AbsentCount = g.Count(x => x.Status == AttendanceStatus.Absent),
+                    LateCount = g.Count(x => x.Status == AttendanceStatus.Late),
+                    Source = source,
+                    FaceVerifiedCount = faceCount,
+                    ManualCount = manualCount,
+                    AverageFaceConfidence = avgConf
+                };
             })
             .OrderByDescending(r => r.Date)
             .ThenBy(r => r.ClassName)
@@ -144,6 +159,9 @@ public class ReportsController : ControllerBase
             var late = records.Count(r => r.Status == AttendanceStatus.Late);
             var percent = total > 0 ? Math.Round((present + (late * 0.5)) / total * 100, 1) : 100.0;
 
+            var faceSessions = records.Count(r => r.Source == "Face" && (r.Status == AttendanceStatus.Present || r.Status == AttendanceStatus.Late));
+            var manualSessions = records.Count(r => r.Source != "Face" && (r.Status == AttendanceStatus.Present || r.Status == AttendanceStatus.Late));
+
             result.Add(new StudentAttendanceSummaryDto
             {
                 StudentId = stud.Id,
@@ -155,6 +173,8 @@ public class ReportsController : ControllerBase
                 PresentSessions = present,
                 AbsentSessions = absent,
                 LateSessions = late,
+                FaceVerifiedSessions = faceSessions,
+                ManualSessions = manualSessions,
                 IsDefaulter = total > 0 && percent < defaulterThreshold
             });
         }
@@ -231,6 +251,8 @@ public class ReportsController : ControllerBase
             "Present",
             "Absent",
             "Late",
+            "Face Verified",
+            "Manual",
             "Attendance %",
             "Defaulter Status"
         };
@@ -255,8 +277,10 @@ public class ReportsController : ControllerBase
             worksheet.Cell(r + 2, 6).Value = item.PresentSessions;
             worksheet.Cell(r + 2, 7).Value = item.AbsentSessions;
             worksheet.Cell(r + 2, 8).Value = item.LateSessions;
-            worksheet.Cell(r + 2, 9).Value = $"{item.AttendancePercentage}%";
-            var defCell = worksheet.Cell(r + 2, 10);
+            worksheet.Cell(r + 2, 9).Value = item.FaceVerifiedSessions;
+            worksheet.Cell(r + 2, 10).Value = item.ManualSessions;
+            worksheet.Cell(r + 2, 11).Value = $"{item.AttendancePercentage}%";
+            var defCell = worksheet.Cell(r + 2, 12);
             defCell.Value = item.IsDefaulter ? "DEFAULTER" : "Normal";
             if (item.IsDefaulter)
             {
@@ -318,6 +342,8 @@ public class ReportsController : ControllerBase
         <th>Conducted</th>
         <th>Present</th>
         <th>Absent</th>
+        <th>Face Verified</th>
+        <th>Manual</th>
         <th>Attendance %</th>
         <th>Status</th>
       </tr>
@@ -332,6 +358,8 @@ public class ReportsController : ControllerBase
         <td>{i.TotalSessions}</td>
         <td>{i.PresentSessions}</td>
         <td>{i.AbsentSessions}</td>
+        <td>{i.FaceVerifiedSessions}</td>
+        <td>{i.ManualSessions}</td>
         <td>{i.AttendancePercentage}%</td>
         <td class='{(i.IsDefaulter ? "defaulter" : "")}'>{(i.IsDefaulter ? "DEFAULTER" : "Good Standing")}</td>
       </tr>"))}

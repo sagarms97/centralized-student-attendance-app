@@ -1,5 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,6 +20,7 @@ import { StaffDailyScheduleItem, AttendanceSheet, StudentAttendanceItem } from '
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     FormsModule,
     MatCardModule,
     MatButtonModule,
@@ -121,6 +123,11 @@ import { StaffDailyScheduleItem, AttendanceSheet, StudentAttendanceItem } from '
 
             <div class="sheet-actions">
               @if (sheet.isEditable) {
+                <a mat-stroked-button color="accent"
+                   [routerLink]="['/app/face-attendance/capture']"
+                   [queryParams]="{ timetableEntryId: sheet.timetableEntryId, periodId: sheet.periodId, classId: sheet.classId, section: sheet.section, date: sheet.date }">
+                  <mat-icon>face</mat-icon> Take via Face
+                </a>
                 <button mat-stroked-button color="primary" (click)="markAllPresent()">
                   <mat-icon>done_all</mat-icon> Mark All Present
                 </button>
@@ -199,6 +206,22 @@ import { StaffDailyScheduleItem, AttendanceSheet, StudentAttendanceItem } from '
                        [(ngModel)]="s.remarks"
                        [disabled]="!sheet.isEditable"
                        placeholder="Optional remarks...">
+              </td>
+            </ng-container>
+
+            <!-- Source -->
+            <ng-container matColumnDef="source">
+              <th mat-header-cell *matHeaderCellDef>Source</th>
+              <td mat-cell *matCellDef="let s">
+                @if (s.source === 'Face') {
+                  <span class="badge-source-face" [matTooltip]="'Verified via Face Recognition' + (s.faceConfidence ? ' (' + (s.faceConfidence * 100 | number:'1.0-0') + '%)' : '')">
+                    <mat-icon class="source-mini-icon">face</mat-icon> Face
+                  </span>
+                } @else {
+                  <span class="badge-source-manual">
+                    <mat-icon class="source-mini-icon">edit</mat-icon> Manual
+                  </span>
+                }
               </td>
             </ng-container>
 
@@ -341,6 +364,29 @@ import { StaffDailyScheduleItem, AttendanceSheet, StudentAttendanceItem } from '
       &.btn-absent.active { background: #ef4444; color: white; border-color: #dc2626; }
       &.btn-late.active { background: #f59e0b; color: white; border-color: #d97706; }
     }
+    .badge-source-face {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: #ede9fe;
+      color: #6d28d9;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+    .badge-source-manual {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: #f1f5f9;
+      color: #64748b;
+      font-weight: 500;
+      font-size: 0.75rem;
+    }
+    .source-mini-icon { font-size: 13px; width: 13px; height: 13px; }
     .remarks-input {
       border: 1px solid #cbd5e1;
       border-radius: 6px;
@@ -366,7 +412,7 @@ export class MarkAttendanceComponent implements OnInit {
   activeSheet = signal<AttendanceSheet | null>(null);
   isSubmitting = signal(false);
 
-  columns = ['rollNo', 'name', 'status', 'remarks'];
+  columns = ['rollNo', 'name', 'status', 'source', 'remarks'];
 
   ngOnInit(): void {
     this.loadDailySchedule();

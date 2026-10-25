@@ -37,7 +37,10 @@ The database is automatically created and migrated on startup into `(localdb)\MS
 | **`Students`** | `InstituteId` | `UNIQUE(InstituteId, RollNo)` | Student directory with parent contacts |
 | **`TimetableEntries`** | `InstituteId` | `UNIQUE(InstituteId, Day, Period, StaffId)`<br>`UNIQUE(InstituteId, Day, Period, Class, Section)` | Weekly schedule with double-booking clash prevention |
 | **`PeriodSwapRequests`** | `InstituteId` | `INDEX(InstituteId, SwapDate, Status)` | Temporary teacher substitution workflow |
-| **`AttendanceRecords`** | `InstituteId` | `UNIQUE(InstituteId, Date, PeriodId, StudentId)` | Bulk attendance entries (`Present`, `Absent`, `Late`) |
+| **`AttendanceRecords`** | `InstituteId` | `UNIQUE(InstituteId, Date, PeriodId, StudentId)` | Bulk attendance entries (`Present`, `Absent`, `Late`, `Source = Face|Manual`, `FaceConfidence`) |
+| **`InstituteFaceSettings`**| `InstituteId` | `UNIQUE(InstituteId)` | Face attendance config (enabled flag, thresholds, data retention) |
+| **`StudentFaceConsents`** | `InstituteId` | `UNIQUE(InstituteId, StudentId)` | Parental consent records for biometrics & auditing |
+| **`StudentFaceEmbeddings`**| `InstituteId` | `INDEX(InstituteId, StudentId)` | AES-256-GCM encrypted 512-dim ArcFace embeddings |
 
 ---
 
@@ -136,3 +139,19 @@ Open your browser at: [http://localhost:4200](http://localhost:4200)
 - Today's attendance percentage and absentee count.
 - Total enrolled students and active staff counters.
 - Pending period swap requests alert.
+
+### 9. AI Face Attendance Module (Optional & Disabled by Default)
+- **Zero-Storage Privacy Architecture**: Raw face photos are processed entirely in-memory and discarded immediately; only AES-256-GCM encrypted mathematical vector embeddings are stored.
+- **Strict Parental Consent Enforcement**: Biometric processing is strictly gated behind verified parental consent. Revoking consent triggers an immediate, unrecoverable hard purge of all face embeddings for that student.
+- **Multi-Pose Enrollment**: Captures 3 to 4 distinct angles (Front, Slight Left, Slight Right, Natural) with automated image quality checks (blur, resolution, exposure, single-face verification).
+- **On-Device MediaPipe WASM Detection**: Classroom panoramic photos (1 to 3 wide shots) are processed locally inside the browser using MediaPipe Face Detector (WASM). Only cropped faces are transmitted over HTTPS.
+- **ONNX ArcFace Recognition**: Runs on Microsoft ML ONNX Runtime (.NET 8) comparing embeddings against the selected class with cosine similarity, configurable confidence thresholds, and automated duplicate resolution.
+- **Mobile-First Human-in-the-Loop Review**: Colored bounding boxes (Green = Matched, Amber = Low Confidence, Red = Unknown) with interactive inspector. Face recognition **NEVER** auto-saves records; the teacher reviews, adjusts, and presses Confirm.
+- **Full Source Auditability**: Every attendance record tracks its origin (`Source = "Face" | "Manual"`) and confidence score, exposed across daily reports, student analytics, and Excel/PDF exports.
+
+---
+
+## 📚 User Manuals & Verification Guides
+- 📖 [Administrator User Manual](docs/ADMIN_USER_MANUAL.md) - Tenant setup, parental consent recording, data retention, and biometric deletion tools.
+- 📖 [Staff / Faculty User Manual](docs/STAFF_USER_MANUAL.md) - Period schedule navigation, classroom photo capture, review screen verification, and manual fallback.
+- 🧪 [Face Recognition Accuracy Testing Guide](docs/FACE_ATTENDANCE_ACCURACY_TESTING_GUIDE.md) - Benchmark test matrix, accuracy metrics (TPR, FAR, FRR), ONNX model configuration, and licensing requirements.

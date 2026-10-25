@@ -11,6 +11,10 @@ export interface DailyAttendanceReportItem {
   absentCount: number;
   lateCount: number;
   attendancePercentage: number;
+  source?: string;
+  faceVerifiedCount?: number;
+  manualCount?: number;
+  averageFaceConfidence?: number;
 }
 
 export interface StudentAttendanceSummary {
@@ -23,6 +27,8 @@ export interface StudentAttendanceSummary {
   presentSessions: number;
   absentSessions: number;
   lateSessions: number;
+  faceVerifiedSessions?: number;
+  manualSessions?: number;
   attendancePercentage: number;
   isDefaulter: boolean;
 }

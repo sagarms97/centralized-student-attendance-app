@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, inject, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -227,6 +227,12 @@ interface ClassPhotoSlot {
                 </mat-chip>
               </mat-chip-set>
             </div>
+          </div>
+
+          <div class="review-action-row" style="margin-top: 20px; display: flex; justify-content: flex-end;">
+            <button mat-flat-button color="primary" (click)="proceedToReview()" style="padding: 0 24px; font-weight: 600; font-size: 0.95rem;">
+              <mat-icon>fact_check</mat-icon> Proceed to Attendance Review Screen
+            </button>
           </div>
         </mat-card-content>
       </mat-card>
@@ -508,11 +514,16 @@ export class FaceCameraCaptureComponent implements OnInit, OnDestroy {
   private mediaPipeService = inject(MediaPipeFaceDetectorService);
   private snackBar = inject(MatSnackBar);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   classes: ClassItem[] = [];
   selectedClassId: number | null = null;
   selectedSection = '';
   availableSections: string[] = ['A', 'B'];
+
+  timetableEntryId: number | null = null;
+  periodId: number | null = null;
+  attendanceDate: string | null = null;
 
   isCameraActive = false;
   mediaStream: MediaStream | null = null;
@@ -561,6 +572,13 @@ export class FaceCameraCaptureComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.route.queryParams.subscribe(params => {
+      if (params['classId']) this.selectedClassId = +params['classId'];
+      if (params['section']) this.selectedSection = params['section'];
+      if (params['timetableEntryId']) this.timetableEntryId = +params['timetableEntryId'];
+      if (params['periodId']) this.periodId = +params['periodId'];
+      if (params['date']) this.attendanceDate = params['date'];
+    });
     this.loadClasses();
   }
 
@@ -573,7 +591,9 @@ export class FaceCameraCaptureComponent implements OnInit, OnDestroy {
       next: (res) => {
         this.classes = res;
         if (this.classes.length > 0) {
-          this.selectedClassId = this.classes[0].id;
+          if (!this.selectedClassId) {
+            this.selectedClassId = this.classes[0].id;
+          }
           this.onClassSelect(this.selectedClassId);
         }
       }
@@ -759,11 +779,45 @@ export class FaceCameraCaptureComponent implements OnInit, OnDestroy {
       next: (result) => {
         this.isRecognizing = false;
         this.recognitionResult = result;
-        this.snackBar.open(`Recognition complete: ${result.matchedCount} student(s) identified!`, 'OK', { duration: 4000 });
+
+        const validPhotos = this.photoSlots
+          .filter(s => !!s.imageSrc)
+          .map(s => ({
+            index: s.index,
+            label: s.label,
+            imageSrc: s.imageSrc!
+          }));
+
+        this.faceService.setReviewSession({
+          classId: this.selectedClassId!,
+          className: this.classes.find(c => c.id === this.selectedClassId)?.name || 'Class',
+          section: this.selectedSection || undefined,
+          timetableEntryId: this.timetableEntryId ?? undefined,
+          periodId: this.periodId ?? undefined,
+          date: this.attendanceDate || new Date().toISOString().substring(0, 10),
+          photos: validPhotos,
+          recognitionResult: result
+        });
+
+        this.snackBar.open(`Recognition complete: ${result.matchedCount} student(s) identified! Click Proceed to Review.`, 'Review Now', { duration: 5000 })
+          .onAction().subscribe(() => {
+            this.proceedToReview();
+          });
       },
       error: (err) => {
         this.isRecognizing = false;
         this.snackBar.open(err.error?.message || 'Face recognition matching failed.', 'Close', { duration: 4000 });
+      }
+    });
+  }
+
+  proceedToReview(): void {
+    if (!this.recognitionResult) return;
+    this.router.navigate(['/app/face-attendance/review'], {
+      queryParams: {
+        timetableEntryId: this.timetableEntryId,
+        periodId: this.periodId,
+        date: this.attendanceDate
       }
     });
   }

@@ -29,8 +29,10 @@ public class StudentAttendanceItemDto
     public int StudentId { get; set; }
     public string RollNo { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
-    public string Status { get; set; } = "Present"; // Present, Absent, Late
+    public string Status { get; set; } = "Present"; // Present, Absent, Late, OnLeave
     public string? Remarks { get; set; }
+    public string Source { get; set; } = "Manual"; // "Manual" or "Face"
+    public double? FaceConfidence { get; set; }
 }
 
 public class AttendanceSheetDto
@@ -58,6 +60,8 @@ public class SubmitAttendanceRequest
 
     [Required]
     public string Date { get; set; } = string.Empty; // yyyy-MM-dd
+
+    public string Source { get; set; } = "Manual"; // "Manual" or "Face"
 
     [Required]
     public List<StudentAttendanceItemDto> Records { get; set; } = new();
